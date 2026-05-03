@@ -1,0 +1,668 @@
+import { useEffect, useState, useCallback } from "react"
+import { supabase } from "../lib/supabase"
+import { formatKZDate } from "../utils/datetime"
+
+// ===== localStorage helpers =====
+function saveToLs(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value))
+  } catch (e) {}
+}
+
+function loadFromLs(key, defaultVal = []) {
+  try {
+    const val = localStorage.getItem(key)
+    return val ? JSON.parse(val) : defaultVal
+  } catch {
+    return defaultVal
+  }
+}
+
+function getStorageKey(user, type) {
+  return user?.id ? `profile_${user.id}_${type}` : null
+}
+
+export default function Profile({ user }) {
+  const [profile, setProfile] = useState(null)
+  const [posts, setPosts] = useState([])
+  const [open, setOpen] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [text, setText] = useState("")
+  const [nickname, setNickname] = useState("")
+  const [bio, setBio] = useState("")
+  const [profileLoading, setProfileLoading] = useState(false)
+  const [saveMsg, setSaveMsg] = useState("")
+  const [followers, setFollowers] = useState([])
+  const [following, setFollowing] = useState([])
+  const [friends, setFriends] = useState([])
+  const [activeSocialList, setActiveSocialList] = useState("")
+
+  const [likedPostIds, setLikedPostIds] = useState(() =>
+    user ? loadFromLs(getStorageKey(user, "likedPostIds")) : []
+  )
+  const [likedPosts, setLikedPosts] = useState(() =>
+    user ? loadFromLs(getStorageKey(user, "likedPosts")) : []
+  )
+  const [favoritePostIds, setFavoritePostIds] = useState(() =>
+    user ? loadFromLs(getStorageKey(user, "favoritePostIds")) : []
+  )
+  const [favoritePosts, setFavoritePosts] = useState(() =>
+    user ? loadFromLs(getStorageKey(user, "favoritePosts")) : []
+  )
+
+  const updateLs = useCallback((type, val) => {
+    if (!user) return
+    const key = getStorageKey(user, type)
+    if (key) saveToLs(key, val)
+  }, [user])
+
+  // ===== PROFILE =====
+  const loadProfile = useCallback(async () => {
+    if (!user?.id) return
+
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", user.id)
+      .maybeSingle()
+
+    if (error) {
+      console.error("Ошибка загрузки профиля:", error)
+      return
+    }
+
+    if (!data) {
+      const initialProfile = { 
+        id: user.id,
+        nickname: user.user_metadata?.nickname || "без ника",
+        bio: ""
+      }
+
+      const { data: created, error: createError } = await supabase
+        .from("profiles")
+        .upsert(initialProfile, { onConflict: "id" })
+        .select()
+        .single()
+
+      if (createError) {
+        console.error("Ошибка создания профиля:", createError)
+        return
+      }
+
+      setProfile(created)
+      setNickname(created.nickname || "")
+      setBio(created.bio || "")
+      return
+    }
+
+    setProfile(data)
+    setNickname(data.nickname || "")
+    setBio(data.bio || "")
+  }, [user])
+
+  const handleSaveProfile = async (e) => {
+    e.preventDefault()
+    if (!user?.id) return
+
+    setProfileLoading(true)
+    setSaveMsg("")
+
+    const payload = {
+      id: user.id,
+      nickname: nickname.trim() || "без ника",
+      bio: bio.trim()
+    }
+
+    const { data, error } = await supabase
+      .from("profiles")
+      .upsert(payload, { onConflict: "id" })
+      .select()
+      .single()
+
+    setProfileLoading(false)
+
+    if (error) {
+        console.error("SAVE ERROR:", error)
+        setSaveMsg(error?.message || "Ошибка сохранения 😢")
+      return
+    }
+
+    setProfile(data)
+    setNickname(data.nickname || "")
+    setBio(data.bio || "")
+    setSaveMsg("Сохранено!")
+    setEditing(false)
+  }
+
+  // ===== POSTS =====
+  const loadPosts = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("posts")
+      .select("*")
+      .order("created_at", { ascending: false })
+
+    if (!error) setPosts(data || [])
+  }, [])
+
+  const mapUsersById = useCallback(async (ids = []) => {
+    if (!ids.length) return []
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("id,nickname")
+      .in("id", ids)
+
+    if (error) {
+      console.error("Ошибка загрузки профилей:", error)
+      return []
+    }
+
+    const byId = {}
+    ;(data || []).forEach((row) => {
+      byId[row.id] = row.nickname || "без ника"
+    })
+
+    return ids.map((id) => ({ id, nickname: byId[id] || "без ника" }))
+  }, [])
+
+  const loadSocial = useCallback(async () => {
+    if (!user?.id) return
+
+    const [{ data: followersData, error: followersError }, { data: followingData, error: followingError }, { data: friendsData, error: friendsError }] =
+      await Promise.all([
+        supabase.from("follows").select("follower_id").eq("following_id", user.id),
+        supabase.from("follows").select("following_id").eq("follower_id", user.id),
+        supabase.from("friends").select("friend_id").eq("user_id", user.id),
+      ])
+
+    if (followersError && followersError.code !== "42P01") {
+      console.error("Ошибка загрузки подписчиков:", followersError)
+    }
+    if (followingError && followingError.code !== "42P01") {
+      console.error("Ошибка загрузки подписок:", followingError)
+    }
+    if (friendsError && friendsError.code !== "42P01") {
+      console.error("Ошибка загрузки друзей:", friendsError)
+    }
+
+    const followerIds = (followersData || []).map((item) => item.follower_id)
+    const followingIds = (followingData || []).map((item) => item.following_id)
+    const friendIds = (friendsData || []).map((item) => item.friend_id)
+
+    const [followersUsers, followingUsers, friendsUsers] = await Promise.all([
+      mapUsersById(followerIds),
+      mapUsersById(followingIds),
+      mapUsersById(friendIds),
+    ])
+
+    setFollowers(followersUsers)
+    setFollowing(followingUsers)
+    setFriends(friendsUsers)
+  }, [mapUsersById, user?.id])
+
+  // ===== INIT =====
+  useEffect(() => {
+    if (!user?.id) {
+      setLikedPostIds([])
+      setLikedPosts([])
+      setFavoritePostIds([])
+      setFavoritePosts([])
+      return
+    }
+
+    loadProfile()
+    loadPosts()
+    loadSocial()
+  }, [loadPosts, loadProfile, loadSocial, user?.id])
+
+  useEffect(() => {
+    if (!user?.id) return
+    setLikedPostIds(loadFromLs(getStorageKey(user, "likedPostIds")))
+    setLikedPosts(loadFromLs(getStorageKey(user, "likedPosts")))
+    setFavoritePostIds(loadFromLs(getStorageKey(user, "favoritePostIds")))
+    setFavoritePosts(loadFromLs(getStorageKey(user, "favoritePosts")))
+  }, [user?.id])
+
+  useEffect(() => {
+    const liked = likedPostIds
+      .map((id) => posts.find((p) => p.id === id))
+      .filter(Boolean)
+    const favorites = favoritePostIds
+      .map((id) => posts.find((p) => p.id === id))
+      .filter(Boolean)
+
+    setLikedPosts(liked)
+    updateLs("likedPosts", liked)
+    setFavoritePosts(favorites)
+    updateLs("favoritePosts", favorites)
+  }, [favoritePostIds, likedPostIds, posts, updateLs])
+
+  // ===== CREATE POST =====
+  const createPost = async () => {
+    if (!text.trim()) return alert("Пост не может быть пустым")
+
+    const { error } = await supabase.from("posts").insert({
+      user_id: user.id,
+      content: text.trim(),
+      likes: 0
+    })
+    if (error) {
+      alert(error.message || "Не удалось создать пост")
+      return
+    }
+
+    setText("")
+    setOpen(false)
+    loadPosts()
+  }
+
+  // ===== LIKE POST =====
+  const handleLike = async (postId) => {
+    if (!user?.id) return
+
+    const alreadyLiked = likedPostIds.includes(postId)
+    const nextIds = alreadyLiked
+      ? likedPostIds.filter((id) => id !== postId)
+      : [...likedPostIds, postId]
+    setLikedPostIds(nextIds)
+    updateLs("likedPostIds", nextIds)
+  }
+
+  // ===== FAVORITE POST =====
+  const handleFavorite = async (postId) => {
+    if (!user?.id) return
+
+    const alreadyFavorite = favoritePostIds.includes(postId)
+    const nextIds = alreadyFavorite
+      ? favoritePostIds.filter((id) => id !== postId)
+      : [...favoritePostIds, postId]
+    setFavoritePostIds(nextIds)
+    updateLs("favoritePostIds", nextIds)
+  }
+
+  // ===== DELETE =====
+  const handleDeletePost = async (postId) => {
+    const post = posts.find(p => p.id === postId)
+    if (!post || post.user_id !== user.id) return
+
+    const { error } = await supabase.from("posts").delete().eq("id", postId)
+    if (error) {
+      alert(error.message || "Не удалось удалить пост")
+      return
+    }
+
+    setPosts(prev => prev.filter(p => p.id !== postId))
+    const nextLikedIds = likedPostIds.filter((id) => id !== postId)
+    const nextFavoriteIds = favoritePostIds.filter((id) => id !== postId)
+    setLikedPostIds(nextLikedIds)
+    setFavoritePostIds(nextFavoriteIds)
+    updateLs("likedPostIds", nextLikedIds)
+    updateLs("favoritePostIds", nextFavoriteIds)
+    loadPosts()
+  }
+
+  // ==== CARD STYLE ====
+  const cardStyle = {
+    border: "1px solid #282828",
+    borderRadius: 12,
+    boxShadow: "0 2px 14px 0 rgba(0,0,0,0.15)",
+    background: "#191b20",
+    margin: "18px auto",
+    padding: "18px 20px 8px 20px",
+    maxWidth: 540,
+    color: "#e9e9f9",
+    position: "relative"
+  }
+
+  const cardHeaderStyle = {
+    fontWeight: 600,
+    color: "#aac6f6",
+    fontSize: 16,
+    marginBottom: 8
+  }
+
+  const cardActionsStyle = {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 18,
+    alignItems: "center",
+    marginTop: 6,
+    fontSize: 17
+  }
+
+  // ===== RENDER =====
+  return (
+    <div className="profile" style={{minHeight: '100vh', background:"#141516"}}>
+
+      {/* HEADER */}
+      <h1 style={{color:"#fff", marginBottom:16, fontSize:32, letterSpacing: 1, marginTop: 24}}>
+        👤 {profile?.nickname || "без ника"}
+      </h1>
+
+      <button
+        onClick={() => {
+          setNickname(profile?.nickname || "")
+          setBio(profile?.bio || "")
+          setSaveMsg("")
+          setEditing(true)
+        }}
+        style={{marginBottom:20, background:"#222", color: "white", border:"none", borderRadius: 7, padding:"8px 18px", cursor: "pointer", fontWeight:600}}
+      >
+        ✏️ Редактировать профиль
+      </button>
+
+      <div style={{ maxWidth: 540, margin: "0 auto 16px", display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <button
+          onClick={() => setActiveSocialList((prev) => (prev === "followers" ? "" : "followers"))}
+          style={{ background: "#24282f", color: "#fff", border: "none", borderRadius: 6, padding: "7px 12px", cursor: "pointer" }}
+        >
+          Мои подписчики ({followers.length})
+        </button>
+        <button
+          onClick={() => setActiveSocialList((prev) => (prev === "friends" ? "" : "friends"))}
+          style={{ background: "#24282f", color: "#fff", border: "none", borderRadius: 6, padding: "7px 12px", cursor: "pointer" }}
+        >
+          Мои друзья ({friends.length})
+        </button>
+        <button
+          onClick={() => setActiveSocialList((prev) => (prev === "following" ? "" : "following"))}
+          style={{ background: "#24282f", color: "#fff", border: "none", borderRadius: 6, padding: "7px 12px", cursor: "pointer" }}
+        >
+          Мои подписки ({following.length})
+        </button>
+      </div>
+
+      {activeSocialList === "followers" && (
+        <div style={{ maxWidth: 540, margin: "0 auto 16px", background: "#1e2234", borderRadius: 10, padding: 14 }}>
+          <h3 style={{ marginTop: 0 }}>Подписчики</h3>
+          {followers.length === 0 ? <p style={{ marginBottom: 0 }}>Подписчиков пока нет.</p> : followers.map((item) => <p key={item.id} style={{ margin: "6px 0" }}>• {item.nickname}</p>)}
+        </div>
+      )}
+
+      {activeSocialList === "friends" && (
+        <div style={{ maxWidth: 540, margin: "0 auto 16px", background: "#1e2234", borderRadius: 10, padding: 14 }}>
+          <h3 style={{ marginTop: 0 }}>Друзья (видно всем)</h3>
+          {friends.length === 0 ? <p style={{ marginBottom: 0 }}>Друзей пока нет.</p> : friends.map((item) => <p key={item.id} style={{ margin: "6px 0" }}>• {item.nickname}</p>)}
+        </div>
+      )}
+
+      {activeSocialList === "following" && (
+        <div style={{ maxWidth: 540, margin: "0 auto 16px", background: "#1e2234", borderRadius: 10, padding: 14 }}>
+          <h3 style={{ marginTop: 0 }}>Подписки (видно только вам)</h3>
+          {following.length === 0 ? <p style={{ marginBottom: 0 }}>Подписок пока нет.</p> : following.map((item) => <p key={item.id} style={{ margin: "6px 0" }}>• {item.nickname}</p>)}
+        </div>
+      )}
+
+      {editing && (
+        <form
+          onSubmit={handleSaveProfile}
+          style={{
+            maxWidth: 540,
+            margin: "0 auto 18px",
+            background: "#1e2234",
+            borderRadius: 10,
+            padding: 16
+          }}
+        >
+          <label style={{ display: "block", marginBottom: 6, color: "#f7d489", fontWeight: 700 }}>
+            Ник
+          </label>
+          <input
+            value={nickname}
+            onChange={(e) => setNickname(e.target.value)}
+            disabled={profileLoading}
+            minLength={2}
+            maxLength={32}
+            placeholder="Ваш ник"
+            required
+            style={{
+              width: "100%",
+              fontSize: 16,
+              borderRadius: 6,
+              border: "1px solid #333",
+              background: "#191b20",
+              color: "#fff",
+              marginBottom: 12,
+              padding: 8
+            }}
+          />
+
+          <label style={{ display: "block", marginBottom: 6, color: "#f7d489", fontWeight: 700 }}>
+            Bio
+          </label>
+          <textarea
+            value={bio}
+            onChange={(e) => setBio(e.target.value)}
+            disabled={profileLoading}
+            maxLength={256}
+            placeholder="Расскажите о себе"
+            style={{
+              width: "100%",
+              minHeight: 70,
+              resize: "vertical",
+              borderRadius: 6,
+              border: "1px solid #333",
+              background: "#191b20",
+              color: "#fff",
+              marginBottom: 12,
+              padding: 8,
+              fontSize: 16
+            }}
+          />
+
+          <button
+            type="submit"
+            disabled={profileLoading}
+            style={{
+              background: "#32b26a",
+              color: "#fff",
+              border: "none",
+              borderRadius: 6,
+              padding: "6px 15px",
+              fontWeight: 600,
+              cursor: profileLoading ? "not-allowed" : "pointer",
+              marginRight: 8
+            }}
+          >
+            {profileLoading ? "Сохраняем..." : "💾 Сохранить"}
+          </button>
+          <button
+            type="button"
+            disabled={profileLoading}
+            onClick={() => {
+              setEditing(false)
+              setNickname(profile?.nickname || "")
+              setBio(profile?.bio || "")
+              setSaveMsg("")
+            }}
+            style={{
+              background: "#222",
+              color: "#fff",
+              border: "1px solid #444",
+              borderRadius: 6,
+              padding: "6px 15px",
+              fontWeight: 600,
+              cursor: "pointer"
+            }}
+          >
+            Отмена
+          </button>
+
+          {saveMsg && (
+            <div
+              style={{
+                marginTop: 10,
+                color: saveMsg === "Сохранено!" ? "#55e491" : "#f96868",
+                fontWeight: 500
+              }}
+            >
+              {saveMsg}
+            </div>
+          )}
+        </form>
+      )}
+
+      {/* CREATE POST */}
+      <div style={{maxWidth:540, margin:"0 auto 18px", background:"#1e2234", borderRadius:10, padding:16}}>
+        <button
+          onClick={() => setOpen(!open)}
+          style={{
+            color:"#fff",
+            background: open ? "#bce0ff" : "#24282f",
+            border: "none",
+            borderRadius: 6,
+            padding: "7px 18px",
+            fontWeight: 600,
+            cursor: "pointer",
+            marginBottom: 8
+          }}
+        >
+          ✍️ Написать пост
+        </button>
+
+        {open && (
+          <div style={{marginTop:10}}>
+            <textarea
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              style={{
+                width: "100%",
+                minHeight: 70,
+                resize: "vertical",
+                borderRadius: 7,
+                border: "1px solid #333",
+                background: "#191b20",
+                color: "#fff",
+                marginBottom: 8,
+                padding: 8,
+                fontSize: 16
+              }}
+              placeholder="Что у вас нового?"
+            />
+            <button
+              onClick={createPost}
+              style={{
+                background: "#60b0ff",
+                color: "#fff",
+                border: "none",
+                borderRadius: 6,
+                padding: "6px 15px",
+                fontWeight:600,
+                cursor:"pointer"
+              }}
+            >
+              💾 Сохранить
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* POSTS */}
+      <div>
+        {posts.map(p => (
+          <div key={p.id} style={cardStyle}>
+            <div style={cardHeaderStyle}>
+              <span style={{fontSize:18, fontWeight:700}}>
+                {profile?.nickname || "Вы"}
+              </span>
+              <span style={{fontWeight:300, color:"#888", fontSize:14, marginLeft:10}}>
+                {formatKZDate(p.created_at)}
+              </span>
+            </div>
+            <div style={{fontSize: 18, lineHeight: 1.45, marginBottom: 8, wordBreak: "break-word"}}>
+              {p.content}
+            </div>
+            <div style={cardActionsStyle}>
+              <button
+                onClick={() => handleLike(p.id)}
+                style={{
+                  background:"none",
+                  border:"none",
+                  color: likedPostIds.includes(p.id) ? "#ff5277" : "#c7c7c7",
+                  fontSize:18,
+                  display:"flex",
+                  alignItems:"center",
+                  cursor: "pointer"
+                }}
+                title={likedPostIds.includes(p.id) ? "Убрать лайк" : "Поставить лайк"}
+              >
+                <span style={{fontSize:21, marginRight:4}}>❤️</span>
+                {likedPostIds.includes(p.id) ? "Уже нравится" : "Лайк"}
+              </button>
+              <button
+                onClick={() => handleFavorite(p.id)}
+                style={{
+                  background:"none",
+                  border:"none",
+                  color: favoritePostIds.includes(p.id) ? "#ffd36b" : "#c7c7c7",
+                  fontSize:18,
+                  display:"flex",
+                  alignItems:"center",
+                  cursor: "pointer"
+                }}
+                title={favoritePostIds.includes(p.id) ? "Убрать из избранного" : "В избранное"}
+              >
+                <span style={{fontSize:21, marginRight:4}}>⭐</span>
+                {favoritePostIds.includes(p.id) ? "В избранном" : "В избранное"}
+              </button>
+              {p.user_id === user.id && (
+                <button
+                  onClick={() => handleDeletePost(p.id)}
+                  style={{
+                    marginLeft: "auto",
+                    background: "none",
+                    border: "none",
+                    color: "#ff6464",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    fontSize: 17
+                  }}
+                >
+                  🗑️ удалить
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* LIKED */}
+      <h2 style={{color:"#ffcfd5", marginTop:32, marginBottom: 7, fontWeight:900, letterSpacing:1}}>
+        ❤️ Лайкнутые посты
+      </h2>
+      {likedPosts.length === 0 && <p style={{color:"#bbb", marginBottom:16, marginTop:4}}>Нет лайкнутых постов.</p>}
+      {likedPosts.map(p => (
+        <div key={p.id} style={cardStyle}>
+          <div style={cardHeaderStyle}>
+            <span style={{fontWeight:900, color:"#faa"}}>Понравился пост</span>
+            <span style={{fontWeight:300, color:"#888", fontSize:14, marginLeft:10}}>
+              {formatKZDate(p.created_at)}
+            </span>
+          </div>
+          <div style={{fontSize:17, lineHeight:1.42, marginBottom:2}}>
+            {p.content}
+          </div>
+        </div>
+      ))}
+
+      {/* FAVORITES */}
+      <h2 style={{color:"#ffedb6", marginTop:28, marginBottom:7, fontWeight:900, letterSpacing:1}}>
+        ⭐ Избранное
+      </h2>
+      {favoritePosts.length === 0 && <p style={{color:"#bbb", marginBottom:16, marginTop:4}}>Нет избранных постов.</p>}
+      {favoritePosts.map(p => (
+        <div key={p.id} style={cardStyle}>
+          <div style={cardHeaderStyle}>
+            <span style={{fontWeight:900, color:"#ffdb59"}}>В избранном</span>
+            <span style={{fontWeight:300, color:"#888", fontSize:14, marginLeft:10}}>
+              {formatKZDate(p.created_at)}
+            </span>
+          </div>
+          <div style={{fontSize:17, lineHeight:1.45, marginBottom:2}}>
+            {p.content}
+          </div>
+        </div>
+      ))}
+
+    </div>
+  )
+}
