@@ -214,7 +214,7 @@ export default function SearchPosts({ user }) {
     } else {
       const { error } = await supabase.from("friends").insert([
         { user_id: user.id, friend_id: targetUserId },
-        { user_id: targetUserId, friend_id: user.id },
+        
       ])
       if (error) {
         alert(error.message || "Не удалось добавить в друзья")
