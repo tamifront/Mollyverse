@@ -1,6 +1,21 @@
 import { useEffect, useState } from "react"
 import { supabase } from "../lib/supabase"
-import { formatKZDate } from "../utils/datetime"
+
+// Чистый Казахстанский формат времени: день.месяц.год часы:минуты (по времени Алматы/КЗ)
+function formatKZDateAlmaty(dt) {
+  if (!dt) return ""
+  // Преобразуем в Date если строка
+  const date = typeof dt === "string" ? new Date(dt) : dt
+  // UTC+6 для Алматы
+  const offsetMillis = 6 * 60 * 60 * 1000
+  const kzTime = new Date(date.getTime() + offsetMillis)
+  const day = String(kzTime.getUTCDate()).padStart(2, "0")
+  const month = String(kzTime.getUTCMonth() + 1).padStart(2, "0")
+  const year = kzTime.getUTCFullYear()
+  const hours = String(kzTime.getUTCHours()).padStart(2, "0")
+  const mins = String(kzTime.getUTCMinutes()).padStart(2, "0")
+  return `${day}.${month}.${year} ${hours}:${mins}`
+}
 
 const redditCardStyles = {
   container: {
@@ -187,7 +202,7 @@ export default function Posts() {
             </div>
             <div style={{flex: 1, display: "flex", flexDirection: "column"}}>
               <div style={redditCardStyles.date}>
-                {formatKZDate(p.created_at)}
+                {formatKZDateAlmaty(p.created_at)}
               </div>
               <div style={redditCardStyles.content}>
                 {p.content}
