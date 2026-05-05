@@ -212,19 +212,20 @@ export default function SearchPosts({ user }) {
         setFriendIds((prev) => prev.filter((id) => id !== targetUserId))
       }
     } else {
+      const { data: authData } = await supabase.auth.getUser()
+
       const { error } = await supabase.from("friends").insert([
-        { user_id: user.id, friend_id: targetUserId },
-        
+        {
+          user_id: authData.user.id,
+          friend_id: targetUserId,
+        },
       ])
-      if (error) {
-        alert(error.message || "Не удалось добавить в друзья")
-      } else {
-        setFriendIds((prev) => [...prev, targetUserId])
       }
-    }
+    
 
     setActionLoadingId("")
   }
+
 
   return (
     <div style={styles.container}>
