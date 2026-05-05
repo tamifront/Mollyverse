@@ -212,15 +212,29 @@ export default function SearchPosts({ user }) {
         setFriendIds((prev) => prev.filter((id) => id !== targetUserId))
       }
     } else {
-      const { data: authData } = await supabase.auth.getUser()
-
+      const { data, error: authError } = await supabase.auth.getUser()
+    
+      const authUser = data?.user
+    
+      if (authError || !authUser) {
+        alert("Нет авторизации")
+        return
+      }
+    
       const { error } = await supabase.from("friends").insert([
         {
-          user_id: authData.user.id,
+          user_id: authUser.id,
           friend_id: targetUserId,
         },
       ])
+    
+      if (error) {
+        console.log("INSERT ERROR:", error)
+        alert(error.message || "Не удалось добавить в друзья")
+      } else {
+        setFriendIds((prev) => [...prev, targetUserId])
       }
+    }
     
 
     setActionLoadingId("")
