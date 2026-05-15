@@ -1,89 +1,223 @@
+/* Главный контейнер с красивым градиентом и плавной анимацией фона */
 .home-container {
-  height: 100vh;
+  min-height: 100vh;
+  width: 100vw;
   display: flex;
-  align-items: center;
+  flex-direction: column;
   justify-content: center;
+  align-items: center;
   position: relative;
   overflow: hidden;
-  color: white;
-  background: #0b0b0f;
+  color: #fff;
+  background: linear-gradient(140deg, #141824 0%, #1b0f1f 40%, #1A2647 100%);
+  isolation: isolate;
 }
 
-/* АНИМАЦИЯ ФОНА */
-.home-container::before {
+.home-container::before,
+.home-container::after {
   content: "";
   position: absolute;
-  width: 400px;
-  height: 400px;
-  background: red;
-  filter: blur(150px);
-  opacity: 0.3;
-  top: 20%;
-  left: 30%;
-  animation: float 6s infinite ease-in-out;
-  z-index: 1;
+  border-radius: 45%;
+  filter: blur(110px);
+  opacity: 0.27;
+  pointer-events: none;
+  z-index: 0;
+  transition: opacity 0.45s;
 }
 
-@keyframes float {
-  0% { transform: translate(0,0); }
-  50% { transform: translate(100px, -80px); }
-  100% { transform: translate(0,0); }
+.home-container::before {
+  width: 480px;
+  height: 480px;
+  top: 8%;
+  left: 36%;
+  background: radial-gradient(circle, #ff1572c8 0%, #af36fff1 95%);
+  animation: home-bg-move1 14s infinite alternate cubic-bezier(.65,0,.45,1.01);
 }
 
-/* Верхняя панель с лого и названием Mollyverse в ЛЕВОМ ВЕРХНЕМ УГЛУ */
+.home-container::after {
+  width: 350px;
+  height: 350px;
+  right: 5%;
+  bottom: 6%;
+  background: radial-gradient(circle, #68faffb6 0%, #5f71ff37 75%);
+  animation: home-bg-move2 15s infinite alternate-reverse cubic-bezier(.78,0,.26,1);
+}
+
+@keyframes home-bg-move1 {
+  0%   { transform: translateY(0) scale(1); }
+  37%  { transform: translateY(-30px) scale(1.02) rotate(-6deg);}
+  60%  { transform: translateY(42px) scale(1.15) rotate(-9deg);}
+  100% { transform: translateY(0) scale(1); }
+}
+
+@keyframes home-bg-move2 {
+  0%   { transform: translateX(0) scale(1); }
+  50%  { transform: translateX(-30px) scale(1.13);}
+  100% { transform: translateX(0) scale(1); }
+}
+
+/* Верхняя панель с логотипом и названием */
 .home-topbar {
   position: absolute;
   top: 0;
-  left:0;
-  width: 100%;
-  height: 80px;
+  left: 0;
+  width: 100vw;
+  min-height: 75px;
   display: flex;
   align-items: center;
-  background: rgba(12, 12, 16, 0.33);
-  border-bottom: 1px solid rgba(255, 0, 60, 0.10);
-  box-shadow: 0 3px 24px 0px rgba(255, 0, 60, 0.06);
-  z-index: 3;
+  background: rgba(19, 17, 30, 0.60);
+  border-bottom: 1.5px solid rgba(255,36,120,.13);
+  box-shadow: 0 3px 24px 0px rgba(255, 0, 60, 0.08);
+  z-index: 20;
   justify-content: flex-start;
-  /* теперь элементы слева, а не по центру */
+  backdrop-filter: blur(8px);
 }
 
 .home-brand {
   display: flex;
   align-items: center;
-  gap: 12px;
-  font-size: 26px;
+  gap: 16px;
+  font-size: 27px;
   font-weight: 900;
-  letter-spacing: 2px;
-  color: white;
+  letter-spacing: 2.3px;
+  color: #fff;
   font-family: 'Montserrat', Arial, sans-serif;
   margin-left: 32px;
+  text-shadow: 0 3px 14px #ae37ffaa, 0 1px #1a003d90;
 }
 
 .home-logo {
-  height: 44px;
-  width: 44px;
-  border-radius: 9px;
-  box-shadow: 0 0 40px 3px rgba(255, 0, 60, 0.11);
+  height: 48px;
+  width: 48px;
+  border-radius: 12px;
+  box-shadow: 0 0 40px 5px #ff00cc22, 0 0 0px 2px #fff4;
 }
 
+/* Блок приветствия */
 .home-card {
   position: relative;
   z-index: 2;
   text-align: center;
-  padding: 120px;
-  border-radius: 20px;
-  background: rgba(0,0,0,0.5);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(25,0,0,0.3);
-  box-shadow: 0 0 30px rgba(55,0,0,0.2);
+  max-width: 440px;
+  width: 90vw;
+  margin: 0 auto;
+  padding: 62px 36px 54px 36px;
+  border-radius: 22px;
+  background: linear-gradient(145deg, rgba(29,19,36,0.82) 40%,rgba(36,21,50,0.76) 100%);
+  backdrop-filter: blur(19px);
+  border: 1.8px solid rgba(255,36,120,0.1);
+  box-shadow: 0 0 40px 6px #7b31a31b, 0 4px 36px #1b008c34, 0 0 0 1px #fff1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  animation: home-card-fadein 1.2s cubic-bezier(.58,.22,.23,1.12);
+}
+
+@keyframes home-card-fadein {
+  0% { opacity: 0; transform: translateY(50px) scale(0.94);}
+  70%{ opacity: .75; }
+  100%{ opacity:1; transform: translateY(0) scale(1);}
 }
 
 .home-title {
-  font-size: 51px;
-  text-shadow: 0 0 10px red;
+  font-size: clamp(2.05rem, 8vw, 3.2rem);
+  font-family: 'Montserrat', Arial, sans-serif;
+  font-weight: 900;
+  line-height: 1.09;
+  margin-bottom: 17px;
+  margin-top: 5px;
+  letter-spacing: 2.8px;
+  color: #fff;
+  background: linear-gradient(87deg, #ff78da 32%, #52e0ff 76%, #cca5ff 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  text-fill-color: transparent;
+  text-shadow: 0 8px 45px #ff15891b,0 2px #1a003d90;
+  animation: home-title-glow 2.6s infinite alternate ease-in-out;
+}
+
+@keyframes home-title-glow {
+  0%   { text-shadow: 0 8px 43px #ff21c71a,0 2px #1a003d90;}
+  47%  { text-shadow: 0 0px 16px #d0e6ff81,0 2px #1a003d90;}
+  100% { text-shadow: 0 7px 65px #ff52b233,0 2px #1a003d90;}
 }
 
 .home-text {
-  font-size: 20px;
-  opacity: 0.8;
+  font-size: clamp(1.1rem, 3vw, 1.32rem);
+  opacity: 0.86;
+  color: #f5e8ff;
+  line-height: 1.65;
+  font-weight: 500;
+  margin-bottom: 30px;
+  margin-top: 2px;
+  text-shadow: 0 1px 14px #aa61d174;
+  letter-spacing: .1px;
+}
+
+/* Волна-анимка приветствия */
+.home-wave {
+  display: inline-block;
+  animation: home-wave 1.18s infinite;
+  font-size: 1.55em;
+  transform-origin: 70% 80%;
+}
+
+@keyframes home-wave {
+  0%, 100% { transform: rotate(0deg);}
+  15%   { transform: rotate(17deg);}
+  25%   { transform: rotate(-9deg);}
+  35%   { transform: rotate(15deg);}
+  45%   { transform: rotate(-6deg);}
+  60%   { transform: rotate(7deg);}
+  78%   { transform: rotate(0deg);}
+}
+
+/* Кнопка входа или "начать" */
+.home-button {
+  margin-top: 16px;
+  background: linear-gradient(94deg,#ff21a6 25%, #568cff 95%);
+  color: #fff;
+  border-radius: 13px;
+  border: none;
+  padding: 14px 38px;
+  font-size: 1.12rem;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  cursor: pointer;
+  box-shadow: 0 2px 26px #ff158446, 0 1.5px 10px #54e7ff26;
+  transition: background .21s,box-shadow .18s,transform .15s;
+  outline: none;
+}
+
+.home-button:hover, .home-button:focus-visible {
+  background: linear-gradient(96deg,#65e0ff 25%,#ff0061 88%);
+  color: #fff8;
+  box-shadow: 0 2px 40px #ff44e681,0 1.5px 10px #66faff41;
+  transform: scale(1.09) translateY(-3px);
+}
+
+/* Адаптивность */
+@media (max-width: 900px) {
+  .home-brand {
+    font-size: 20px;
+    margin-left: 18px;
+    gap: 10px;
+  }
+  .home-logo {
+    height: 36px;
+    width: 36px;
+  }
+  .home-topbar { min-height: 56px;}
+  .home-card { max-width: 96vw; padding: 38px 13px 36px 13px;}
+  .home-title { font-size: clamp(1.52rem, 7vw, 2.8rem);}
+}
+
+@media (max-width: 560px) {
+  .home-container { min-height: 100svh; }
+  .home-topbar { min-height: 46px; }
+  .home-logo   { height: 27px; width: 27px;}
+  .home-brand  { font-size: 15.5px; margin-left: 7px; gap: 7px;}
+  .home-card   { padding: 28px 5px 19px 5px; border-radius: 14px;}
+  .home-title  { font-size: clamp(1.09rem, 10vw, 2.0rem);}
 }
