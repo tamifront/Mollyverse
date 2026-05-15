@@ -6,8 +6,7 @@ export default function Login() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [nickname, setNickname] = useState("")
-const [age, setAge] = useState("")
-const [avatar, setAvatar] = useState(null)
+  const [age, setAge] = useState("")
 
   async function login() {
     const { data, error } = await supabase.auth.signInWithPassword({
@@ -23,7 +22,6 @@ const [avatar, setAvatar] = useState(null)
     }
   }
 
-
   async function register() {
     const { error } = await supabase.auth.signUp({
       email,
@@ -36,7 +34,7 @@ const [avatar, setAvatar] = useState(null)
     }
   
     // сразу логин
-    const { error: loginError } = await supabase.auth.signInWithPassword({
+    const { data: userData, error: loginError } = await supabase.auth.signInWithPassword({
       email,
       password
     })
@@ -47,26 +45,19 @@ const [avatar, setAvatar] = useState(null)
     }
   
     alert("Аккаунт создан и ты вошла 🚀")
-    let avatarUrl = ""
-  
-    if (avatar) {
-      const fileName = `${user.id}-${avatar.name}`
-  
-      const { data: uploadData, error: uploadError } =
-        await supabase.storage.from("avatars").upload(fileName, avatar)
-  
-      if (uploadError) {
-        alert(uploadError.message)
-      } else {
-        avatarUrl = uploadData.path
-      }
+
+    // user id берем из результата логина
+    const user = userData && userData.user
+    if (!user) {
+      alert("Ошибка получения информации о пользователе.")
+      return
     }
-  
+
     await supabase.from("profiles").upsert({
       id: user.id,
       nickname,
       age,
-      avatar_url: avatarUrl
+      avatar_url: "" // пустой, так как аватар не загружаем
     })
   
     alert("Аккаунт создан 🚀 теперь войди")
@@ -90,21 +81,18 @@ const [avatar, setAvatar] = useState(null)
           onChange={(e) => setPassword(e.target.value)}
         />
 
-<input
-  placeholder="nickname"
-  onChange={(e) => setNickname(e.target.value)}
-/>
+        <input
+          placeholder="nickname"
+          onChange={(e) => setNickname(e.target.value)}
+        />
 
-<input
-  placeholder="age"
-  type="number"
-  onChange={(e) => setAge(e.target.value)}
-/>
+        <input
+          placeholder="age"
+          type="number"
+          onChange={(e) => setAge(e.target.value)}
+        />
 
-<input
-  type="file"
-  onChange={(e) => setAvatar(e.target.files[0])}
-/>
+        {/* input для аватара удалён */}
   
         <button onClick={login}>Войти</button>
         <button onClick={register}>Регистрация</button>
