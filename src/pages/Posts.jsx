@@ -106,20 +106,51 @@ const redditCardStyles = {
     color: "#96a0b5",
     fontSize: 13,
     marginBottom: 8,
+  },
+  author: {
+    color: "#aac6f6",
+    fontWeight: 700,
+    fontSize: 16,
+    marginBottom: 4
   }
 }
 
 export default function Posts() {
   const [posts, setPosts] = useState([])
   const [text, setText] = useState("")
+  const [profilesById, setProfilesById] = useState({})
 
   async function loadPosts() {
-    const { data, error } = await supabase
+    // получаем посты + user_id
+    const { data: postsData, error: postsError } = await supabase
       .from("posts")
       .select("*")
       .order("created_at", { ascending: false })
 
-    setPosts(data || [])
+    if (postsError) {
+      setPosts([])
+      return
+    }
+    setPosts(postsData || [])
+
+    // собрать нужны ли профили
+    // собираем только уникальные user_id из постов
+    const userIds = Array.from(new Set((postsData || []).map(p => p.user_id).filter(Boolean)))
+    if (userIds.length === 0) {
+      setProfilesById({})
+      return
+    }
+    // берем никнеймы по user_id
+    const { data: profilesData } = await supabase
+      .from("profiles")
+      .select("id,nickname")
+      .in("id", userIds)
+    // формируем быстрый доступ по id
+    const mapping = {}
+    for (const prof of (profilesData || [])) {
+      mapping[prof.id] = prof.nickname || "без ника"
+    }
+    setProfilesById(mapping)
   }
 
   useEffect(() => {
@@ -133,7 +164,7 @@ export default function Posts() {
     }
     const { error } = await supabase
       .from("posts")
-      .insert({ content: text })
+      .insert({ content: text }) // user_id добавляется автоматически через row level security/policies или триггер? Иначе нужно добавить
 
     if (error) {
       alert(error.message)
@@ -201,6 +232,10 @@ export default function Posts() {
               }}>▼</span>
             </div>
             <div style={{flex: 1, display: "flex", flexDirection: "column"}}>
+              {/* Ник автора */}
+              <div style={redditCardStyles.author}>
+                {profilesById[p.user_id] || "без ника"}
+              </div>
               <div style={redditCardStyles.date}>
                 {formatKZDateAlmaty(p.created_at)}
               </div>
