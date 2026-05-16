@@ -16,24 +16,36 @@ export default function App() {
   const [page, setPage] = useState("home")
   const [updatesUnread, setUpdatesUnread] = useState(false)
 
+  const fetchLatestUpdateAt = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("updates")
+      .select("created_at")
+      .order("created_at", { ascending: false })
+      .limit(1)
+
+    if (error) return null
+    return data?.[0]?.created_at ?? null
+  }, [])
+
   const refreshUpdatesUnread = useCallback(async () => {
     if (!user?.id) {
       setUpdatesUnread(false)
       return
     }
-    const { data } = await supabase
-      .from("updates")
-      .select("created_at")
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle()
-
-    if (!data?.created_at) {
+    const latestAt = await fetchLatestUpdateAt()
+    if (!latestAt) {
       setUpdatesUnread(false)
       return
     }
-    setUpdatesUnread(hasUnreadUpdates(data.created_at, user.id))
-  }, [user?.id])
+    setUpdatesUnread(hasUnreadUpdates(latestAt, user.id))
+  }, [fetchLatestUpdateAt, user?.id])
+
+  const markAllUpdatesRead = useCallback(async () => {
+    if (!user?.id) return
+    const latestAt = await fetchLatestUpdateAt()
+    if (latestAt) markUpdatesAsRead(user.id, latestAt)
+    setUpdatesUnread(false)
+  }, [fetchLatestUpdateAt, user?.id])
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -64,16 +76,19 @@ export default function App() {
 
   useEffect(() => {
     if (page !== "updates" || !user?.id) return
-    markUpdatesAsRead(user.id)
-    setUpdatesUnread(false)
-  }, [page, user?.id])
+    markAllUpdatesRead()
+  }, [page, user?.id, markAllUpdatesRead])
 
   if (!user) return <Login />
 
   return (
     
     <div className="layout">
-      <Sidebar setPage={setPage} updatesUnread={updatesUnread} />
+      <Sidebar
+        setPage={setPage}
+        updatesUnread={updatesUnread}
+        onOpenUpdates={markAllUpdatesRead}
+      />
 
       <div className="page">
         {page === "home" && <Home user={user} />}

@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react"
 import { supabase } from "../lib/supabase"
 import { POST_SOURCE_FEED, POST_SOURCE_PROFILE, isVisibleInFeed } from "../utils/postSource"
-import { fetchNicknamesByUserIds, getPostAuthorNickname } from "../utils/profiles"
+import { getPostAuthorNickname, loadAllNicknamesMap } from "../utils/profiles"
+import { usePostReactions } from "../hooks/usePostReactions"
 
 // Чистый Казахстанский формат времени: день.месяц.год часы:минуты (по времени Алматы/КЗ)
 function formatKZDateAlmaty(dt) {
@@ -114,6 +115,14 @@ const redditCardStyles = {
     fontWeight: 700,
     fontSize: 16,
     marginBottom: 4
+  },
+  cardActions: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 18,
+    alignItems: "center",
+    marginTop: 8,
+    fontSize: 17
   }
 }
 
@@ -122,6 +131,12 @@ export default function Posts({ user }) {
   const [text, setText] = useState("")
   const [profilesById, setProfilesById] = useState({})
   const [loadError, setLoadError] = useState("")
+  const {
+    likedPostIds,
+    favoritePostIds,
+    toggleLike,
+    toggleFavorite,
+  } = usePostReactions(user)
 
   async function loadPosts() {
     const { data: allPosts, error } = await supabase
@@ -138,19 +153,8 @@ export default function Posts({ user }) {
     }
     setLoadError("")
 
-    const postsData = (allPosts || []).filter(isVisibleInFeed)
-    setPosts(postsData)
-
-    const userIds = postsData.map((p) => p.user_id).filter(Boolean)
-    if (user?.id && !userIds.includes(user.id)) userIds.push(user.id)
-
-    const { data: allProfiles } = await supabase.from("profiles").select("id, nickname")
-    const mapping = {}
-    for (const p of allProfiles || []) {
-      mapping[p.id] = p.nickname?.trim() || "без ника"
-    }
-    const fromIds = await fetchNicknamesByUserIds(userIds)
-    setProfilesById({ ...mapping, ...fromIds })
+    setPosts((allPosts || []).filter(isVisibleInFeed))
+    setProfilesById(await loadAllNicknamesMap(user))
   }
 
   useEffect(() => {
@@ -265,6 +269,58 @@ export default function Posts({ user }) {
               </div>
               <div style={redditCardStyles.content}>
                 {p.content}
+              </div>
+              <div style={redditCardStyles.cardActions}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!user?.id) {
+                      alert("Войдите в аккаунт, чтобы ставить лайки")
+                      return
+                    }
+                    toggleLike(p.id)
+                  }}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: likedPostIds.includes(String(p.id)) ? "#ff5277" : "#c7c7c7",
+                    fontSize: 18,
+                    display: "flex",
+                    alignItems: "center",
+                    cursor: "pointer",
+                  }}
+                  title={likedPostIds.includes(String(p.id)) ? "Убрать лайк" : "Поставить лайк"}
+                >
+                  <span style={{ fontSize: 21, marginRight: 4 }}>❤️</span>
+                  {likedPostIds.includes(String(p.id)) ? "Уже нравится" : "Лайк"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!user?.id) {
+                      alert("Войдите в аккаунт, чтобы добавлять в избранное")
+                      return
+                    }
+                    toggleFavorite(p.id)
+                  }}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: favoritePostIds.includes(String(p.id)) ? "#ffd36b" : "#c7c7c7",
+                    fontSize: 18,
+                    display: "flex",
+                    alignItems: "center",
+                    cursor: "pointer",
+                  }}
+                  title={
+                    favoritePostIds.includes(String(p.id))
+                      ? "Убрать из избранного"
+                      : "В избранное"
+                  }
+                >
+                  <span style={{ fontSize: 21, marginRight: 4 }}>⭐</span>
+                  {favoritePostIds.includes(String(p.id)) ? "В избранном" : "В избранное"}
+                </button>
               </div>
             </div>
           </div>

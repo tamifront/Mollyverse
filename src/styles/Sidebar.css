@@ -8,7 +8,7 @@ body,
 }
 
 .layout {
-    display: flex;
+    display: block;
     min-height: 100vh;
     background: #0b0b0f;
     color: white;
@@ -19,26 +19,30 @@ body,
     box-sizing: border-box;
   }
   
-  /* SIDEBAR */
+  /* SIDEBAR — фиксировано при скролле ленты и других страниц */
   .sidebar {
     width: 260px;
+    height: 100vh;
     min-height: 100vh;
-  
+
     display: flex;
     flex-direction: column;
     gap: 12px;
-  
+
     padding: 20px;
-  
-    background: rgba(16, 16, 24, 0.9);
+
+    background: rgba(16, 16, 24, 0.95);
     backdrop-filter: blur(12px);
-  
+
     border-right: 1px solid rgba(255, 0, 0, 0.25);
-  
+
     box-shadow: 0 0 25px rgba(255, 0, 0, 0.15);
-  
-    position: relative; /* ВАЖНО: НЕ absolute */
+
+    position: fixed;
+    top: 0;
+    left: 0;
     z-index: 130;
+    overflow-y: auto;
   }
   
   /* ЛОГО */
@@ -114,10 +118,13 @@ body,
   
   /* PAGE */
   .page {
-    flex: 1;
+    margin-left: 260px;
+    width: calc(100% - 260px);
+    max-width: calc(100% - 260px);
     padding: 20px;
     overflow: visible;
     min-height: 100vh;
+    box-sizing: border-box;
   }
 
   .burger-button {
@@ -195,6 +202,9 @@ body,
     }
 
     .page {
+      margin-left: 0;
+      width: 100%;
+      max-width: 100%;
       padding: 14px;
       padding-top: 64px;
       min-height: 100vh;

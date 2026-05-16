@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { supabase } from "../lib/supabase"
 import { formatKZDate } from "../utils/datetime"
-import { fetchNicknamesByUserIds, getPostAuthorNickname } from "../utils/profiles"
+import { getPostAuthorNickname, loadAllNicknamesMap } from "../utils/profiles"
 
 const styles = {
   container: {
@@ -115,15 +115,8 @@ export default function SearchPosts({ user }) {
           console.error("Профили:", profilesError)
         }
 
-        const byId = {}
-        for (const p of profilesData || []) {
-          byId[p.id] = p.nickname?.trim() || "без ника"
-        }
-
-        const userIds = (postsData || []).map((p) => p.user_id).filter(Boolean)
-        const fromPosts = await fetchNicknamesByUserIds(userIds)
-        setProfilesById({ ...byId, ...fromPosts })
         setUsers(profilesData || [])
+        setProfilesById(await loadAllNicknamesMap(user))
       } catch (e) {
         console.error(e)
         setPosts([])
@@ -135,7 +128,7 @@ export default function SearchPosts({ user }) {
     }
 
     loadData()
-  }, [])
+  }, [user?.id])
 
   useEffect(() => {
     async function loadMySocial() {

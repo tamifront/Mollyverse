@@ -2,26 +2,8 @@ import { useEffect, useState, useCallback } from "react"
 import { supabase } from "../lib/supabase"
 import { formatKZDate } from "../utils/datetime"
 import { POST_SOURCE_PROFILE } from "../utils/postSource"
-
-// ===== localStorage helpers =====
-function saveToLs(key, value) {
-  try {
-    localStorage.setItem(key, JSON.stringify(value))
-  } catch (e) {}
-}
-
-function loadFromLs(key, defaultVal = []) {
-  try {
-    const val = localStorage.getItem(key)
-    return val ? JSON.parse(val) : defaultVal
-  } catch {
-    return defaultVal
-  }
-}
-
-function getStorageKey(user, type) {
-  return user?.id ? `profile_${user.id}_${type}` : null
-}
+import { loadAllNicknamesMap } from "../utils/profiles"
+import { usePostReactions } from "../hooks/usePostReactions"
 
 export default function Profile({ user, profileUserId }) {
   // Исправим отображение постов — показываем только посты принадлежащие эффективному пользователю
@@ -42,24 +24,15 @@ export default function Profile({ user, profileUserId }) {
   const [friends, setFriends] = useState([])
   const [activeSocialList, setActiveSocialList] = useState("")
 
-  const [likedPostIds, setLikedPostIds] = useState(() =>
-    user ? loadFromLs(getStorageKey(user, "likedPostIds")) : []
-  )
-  const [likedPosts, setLikedPosts] = useState(() =>
-    user ? loadFromLs(getStorageKey(user, "likedPosts")) : []
-  )
-  const [favoritePostIds, setFavoritePostIds] = useState(() =>
-    user ? loadFromLs(getStorageKey(user, "favoritePostIds")) : []
-  )
-  const [favoritePosts, setFavoritePosts] = useState(() =>
-    user ? loadFromLs(getStorageKey(user, "favoritePosts")) : []
-  )
-
-  const updateLs = useCallback((type, val) => {
-    if (!user) return
-    const key = getStorageKey(user, type)
-    if (key) saveToLs(key, val)
-  }, [user])
+  const {
+    likedPostIds,
+    favoritePostIds,
+    likedPosts,
+    favoritePosts,
+    toggleLike: handleLike,
+    toggleFavorite: handleFavorite,
+    refresh: refreshReactions,
+  } = usePostReactions(user)
 
   // ===== PROFILE =====
   const loadProfile = useCallback(async () => {
@@ -132,29 +105,13 @@ export default function Profile({ user, profileUserId }) {
     }
     setPosts(data || [])
 
-    // Список авторов всегда только для текущего id
-    const userIds = Array.from(new Set((data || []).map(p => p.user_id).filter(Boolean)))
-    if (userIds.length === 0) {
-      setPostAuthors({})
-      return
-    }
-
-    const { data: usersData, error: usersError } = await supabase
-      .from("profiles")
-      .select("id, nickname")
-      .in("id", userIds)
-
-    if (usersError) {
-      setPostAuthors({})
-      return
-    }
-
+    const nickMap = await loadAllNicknamesMap(user)
     const authorsMap = {}
-    for (const user of usersData || []) {
-      authorsMap[user.id] = user
+    for (const [id, nickname] of Object.entries(nickMap)) {
+      authorsMap[id] = { id, nickname }
     }
     setPostAuthors(authorsMap)
-  }, [effectiveProfileUserId])
+  }, [effectiveProfileUserId, user])
 
   const mapUsersById = useCallback(async (ids = []) => {
     if (!ids.length) return []
@@ -201,10 +158,6 @@ export default function Profile({ user, profileUserId }) {
 
   useEffect(() => {
     if (!effectiveProfileUserId) {
-      setLikedPostIds([])
-      setLikedPosts([])
-      setFavoritePostIds([])
-      setFavoritePosts([])
       setProfile(null)
       setPosts([])
       setPostAuthors({})
@@ -215,28 +168,6 @@ export default function Profile({ user, profileUserId }) {
     loadPosts()
     loadSocial()
   }, [loadPosts, loadProfile, loadSocial, effectiveProfileUserId])
-
-  useEffect(() => {
-    if (!user?.id) return
-    setLikedPostIds(loadFromLs(getStorageKey(user, "likedPostIds")))
-    setLikedPosts(loadFromLs(getStorageKey(user, "likedPosts")))
-    setFavoritePostIds(loadFromLs(getStorageKey(user, "favoritePostIds")))
-    setFavoritePosts(loadFromLs(getStorageKey(user, "favoritePosts")))
-  }, [user?.id])
-
-  useEffect(() => {
-    const liked = likedPostIds
-      .map((id) => posts.find((p) => p.id === id))
-      .filter(Boolean)
-    const favorites = favoritePostIds
-      .map((id) => posts.find((p) => p.id === id))
-      .filter(Boolean)
-
-    setLikedPosts(liked)
-    updateLs("likedPosts", liked)
-    setFavoritePosts(favorites)
-    updateLs("favoritePosts", favorites)
-  }, [favoritePostIds, likedPostIds, posts, updateLs])
 
   // ===== СОЗДАНИЕ ПОСТА =====
   const createPost = async () => {
@@ -268,30 +199,6 @@ export default function Profile({ user, profileUserId }) {
     loadPosts()
   }
 
-  // ===== ЛАЙК =====
-  const handleLike = async (postId) => {
-    if (!user?.id) return
-
-    const alreadyLiked = likedPostIds.includes(postId)
-    const nextIds = alreadyLiked
-      ? likedPostIds.filter((id) => id !== postId)
-      : [...likedPostIds, postId]
-    setLikedPostIds(nextIds)
-    updateLs("likedPostIds", nextIds)
-  }
-
-  // ===== ИЗБРАННОЕ =====
-  const handleFavorite = async (postId) => {
-    if (!user?.id) return
-
-    const alreadyFavorite = favoritePostIds.includes(postId)
-    const nextIds = alreadyFavorite
-      ? favoritePostIds.filter((id) => id !== postId)
-      : [...favoritePostIds, postId]
-    setFavoritePostIds(nextIds)
-    updateLs("favoritePostIds", nextIds)
-  }
-
   // ===== УДАЛИТЬ ПОСТ =====
   const handleDeletePost = async (postId) => {
     const post = posts.find(p => p.id === postId)
@@ -304,13 +211,8 @@ export default function Profile({ user, profileUserId }) {
     }
 
     setPosts(prev => prev.filter(p => p.id !== postId))
-    const nextLikedIds = likedPostIds.filter((id) => id !== postId)
-    const nextFavoriteIds = favoritePostIds.filter((id) => id !== postId)
-    setLikedPostIds(nextLikedIds)
-    setFavoritePostIds(nextFavoriteIds)
-    updateLs("likedPostIds", nextLikedIds)
-    updateLs("favoritePostIds", nextFavoriteIds)
     loadPosts()
+    refreshReactions()
   }
 
   // ==== СТИЛИ =====
@@ -626,32 +528,32 @@ export default function Profile({ user, profileUserId }) {
                   style={{
                     background:"none",
                     border:"none",
-                    color: likedPostIds.includes(p.id) ? "#ff5277" : "#c7c7c7",
+                    color: likedPostIds.includes(String(p.id)) ? "#ff5277" : "#c7c7c7",
                     fontSize:18,
                     display:"flex",
                     alignItems:"center",
                     cursor: "pointer"
                   }}
-                  title={likedPostIds.includes(p.id) ? "Убрать лайк" : "Поставить лайк"}
+                  title={likedPostIds.includes(String(p.id)) ? "Убрать лайк" : "Поставить лайк"}
                 >
                   <span style={{fontSize:21, marginRight:4}}>❤️</span>
-                  {likedPostIds.includes(p.id) ? "Уже нравится" : "Лайк"}
+                  {likedPostIds.includes(String(p.id)) ? "Уже нравится" : "Лайк"}
                 </button>
                 <button
                   onClick={() => handleFavorite(p.id)}
                   style={{
                     background:"none",
                     border:"none",
-                    color: favoritePostIds.includes(p.id) ? "#ffd36b" : "#c7c7c7",
+                    color: favoritePostIds.includes(String(p.id)) ? "#ffd36b" : "#c7c7c7",
                     fontSize:18,
                     display:"flex",
                     alignItems:"center",
                     cursor: "pointer"
                   }}
-                  title={favoritePostIds.includes(p.id) ? "Убрать из избранного" : "В избранное"}
+                  title={favoritePostIds.includes(String(p.id)) ? "Убрать из избранного" : "В избранное"}
                 >
                   <span style={{fontSize:21, marginRight:4}}>⭐</span>
-                  {favoritePostIds.includes(p.id) ? "В избранном" : "В избранное"}
+                  {favoritePostIds.includes(String(p.id)) ? "В избранном" : "В избранное"}
                 </button>
                 {(p.user_id === user.id && (!profileUserId || profileUserId === user.id)) && (
                   <button

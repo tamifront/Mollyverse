@@ -96,11 +96,12 @@ export default function Updates({ user, onUpdatesChange }) {
     loadUpdates()
   }, [])
 
+  const latestCreatedAt = updates[0]?.created_at
+
   useEffect(() => {
-    if (!user?.id || updates.length === 0) return
-    const latest = updates[0]?.created_at
-    if (latest) markUpdatesAsRead(user.id, latest)
-  }, [updates, user?.id])
+    if (!user?.id || !latestCreatedAt) return
+    markUpdatesAsRead(user.id, latestCreatedAt)
+  }, [user?.id, latestCreatedAt])
 
   async function createUpdate() {
     if (!canPublish) {
