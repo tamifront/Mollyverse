@@ -4,20 +4,60 @@ import { POST_SOURCE_FEED, POST_SOURCE_PROFILE, isVisibleInFeed } from "../utils
 import { getPostAuthorNickname, loadAllNicknamesMap } from "../utils/profiles"
 import { usePostReactions } from "../hooks/usePostReactions"
 
-// Чистый Казахстанский формат времени: день.месяц.год часы:минуты (по времени Алматы/КЗ)
+// Правильное казахстанское время: день.месяц.год часы:минуты (Asia/Almaty, UTC+6, с учётом переходов и нормальное время вне зависимости от локали)
 function formatKZDateAlmaty(dt) {
   if (!dt) return ""
-  // Преобразуем в Date если строка
-  const date = typeof dt === "string" ? new Date(dt) : dt
-  // UTC+6 для Алматы
-  const offsetMillis = 6 * 60 * 60 * 1000
-  const kzTime = new Date(date.getTime() + offsetMillis)
-  const day = String(kzTime.getUTCDate()).padStart(2, "0")
-  const month = String(kzTime.getUTCMonth() + 1).padStart(2, "0")
-  const year = kzTime.getUTCFullYear()
-  const hours = String(kzTime.getUTCHours()).padStart(2, "0")
-  const mins = String(kzTime.getUTCMinutes()).padStart(2, "0")
-  return `${day}.${month}.${year} ${hours}:${mins}`
+  try {
+    let dateObj
+    if (typeof dt === "string") {
+      // ISO датастроки из супабейса, без таймзоны — считаем что это UTC (или local но обычно UTC)
+      // если есть "Z" (UTC), то new Date(dt) - норм
+      // если нет "Z", то Date.parse воспринимает как local, но Supabase хранит в UTC
+      // Поэтому: нормализуем всегда к UTC, потом представим в алматинское время
+      if (!dt.endsWith("Z") && !dt.includes("+")) {
+        // добавим Z если нет, иначе как local (неправильно)
+        dateObj = new Date(dt + "Z")
+      } else {
+        dateObj = new Date(dt)
+      }
+    } else if (dt instanceof Date) {
+      dateObj = dt
+    } else {
+      return ""
+    }
+
+    // Используем Intl.DateTimeFormat чтобы получить реальное время в Алматы (учитывает летнее/зимнее и прочее)
+    // Но fallback для node <14
+    try {
+      const options = {
+        timeZone: "Asia/Almaty",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      }
+      // "dd.mm.yyyy, HH:MM"
+      const parts = new Intl.DateTimeFormat("ru-RU", options).formatToParts(dateObj)
+      const get = type => parts.find(p => p.type === type)?.value ?? ""
+      // Порядок: день.месяц.год часы:минуты
+      return `${get("day")}.${get("month")}.${get("year")} ${get("hour")}:${get("minute")}`
+    } catch (e) {
+      // fallback если Intl.DateTimeFormat не поддерживает таймзоны
+      // смещаем время вручную на +6 часов к UTC
+      const utc = dateObj.getTime()
+      const tzDateObj = new Date(utc + 6 * 60 * 60 * 1000)
+      const day = String(tzDateObj.getUTCDate()).padStart(2, "0")
+      const month = String(tzDateObj.getUTCMonth() + 1).padStart(2, "0")
+      const year = tzDateObj.getUTCFullYear()
+      const hours = String(tzDateObj.getUTCHours()).padStart(2, "0")
+      const mins = String(tzDateObj.getUTCMinutes()).padStart(2, "0")
+      return `${day}.${month}.${year} ${hours}:${mins}`
+    }
+  } catch (e) {
+    return ""
+  }
 }
 
 const redditCardStyles = {

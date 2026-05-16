@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { supabase } from "../lib/supabase"
-import { formatKZDate } from "../utils/datetime"
+// Заменяем import на форматтер для Казахстана
+import { formatKZDateAlmaty } from "../utils/datetime"
 import { getPostAuthorNickname, loadAllNicknamesMap } from "../utils/profiles"
 
 const styles = {
@@ -329,7 +330,8 @@ export default function SearchPosts({ user }) {
                   {getPostAuthorNickname(post, profilesById, user)}
                 </span>
                 <span style={styles.date}>
-                  {formatKZDate(post.created_at)}
+                  {/* Используем алиматинское/казахстанское время */}
+                  {formatKZDateAlmaty(post.created_at)}
                 </span>
               </div>
               <p style={styles.content}>{post.content}</p>
