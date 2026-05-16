@@ -121,6 +121,7 @@ export default function Posts({ user }) {
   const [posts, setPosts] = useState([])
   const [text, setText] = useState("")
   const [profilesById, setProfilesById] = useState({})
+  const [loadError, setLoadError] = useState("")
 
   async function loadPosts() {
     const { data: allPosts, error } = await supabase
@@ -130,10 +131,12 @@ export default function Posts({ user }) {
 
     if (error) {
       console.error(error)
+      setLoadError(error.message || "Не удалось загрузить посты")
       setPosts([])
       setProfilesById({})
       return
     }
+    setLoadError("")
 
     const postsData = (allPosts || []).filter(isVisibleInFeed)
     setPosts(postsData)
@@ -218,6 +221,16 @@ export default function Posts({ user }) {
       </form>
 
       <div style={redditCardStyles.postsContainer}>
+        {loadError ? (
+          <p style={{ color: "#ff8a8a", textAlign: "center" }}>
+            Ошибка: {loadError}. Выполни supabase/fix_all.sql в Supabase.
+          </p>
+        ) : null}
+        {!loadError && posts.length === 0 ? (
+          <p style={{ color: "#bbb", textAlign: "center" }}>
+            В ленте пока нет постов. Напиши пост в профиле.
+          </p>
+        ) : null}
         {posts.map((p) => (
           <div key={p.id} style={redditCardStyles.card}>
             <div style={redditCardStyles.voting}>
