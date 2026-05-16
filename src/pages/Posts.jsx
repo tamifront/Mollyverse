@@ -222,6 +222,7 @@ export default function Posts({ user }) {
     favoritePostIds,
     toggleLike,
     toggleFavorite,
+    refreshReactions,
   } = usePostReactions(user)
 
   // Система лайков как в соцсетях: лайки минимум 0, начальное значение 0, при лайке +1
@@ -233,6 +234,9 @@ export default function Posts({ user }) {
 
     const isLiked = likedPostIds.includes(String(postId))
 
+    // --- Новый подход: лайк сохраняется в отдельной таблице post_likes, считаем их как aggregate
+
+    // Сначала оптимистично обновляем UI (опционально)
     setPosts(posts =>
       posts.map(p => {
         if (p.id === postId) {
@@ -240,10 +244,8 @@ export default function Posts({ user }) {
           if (isNaN(currentLikes) || currentLikes < 0) currentLikes = 0
           let newLikes
           if (isLiked) {
-            // Убираем лайк, не меньше 0
             newLikes = Math.max(currentLikes - 1, 0)
           } else {
-            // Ставим лайк, +1
             newLikes = currentLikes + 1
           }
           return { ...p, likes: newLikes }
@@ -251,11 +253,37 @@ export default function Posts({ user }) {
         return p
       })
     )
-    toggleLike(postId)
+
+    // Теперь пишем/удаляем в таблице post_likes
+    if (isLiked) {
+      // Удаляем лайк
+      const { error } = await supabase
+        .from("post_likes")
+        .delete()
+        .match({ post_id: postId, user_id: user.id })
+      if (error) {
+        alert("Ошибка при удалении лайка: " + error.message)
+      }
+    } else {
+      // Ставим лайк
+      const { error } = await supabase
+        .from("post_likes")
+        .insert({ post_id: postId, user_id: user.id, created_at: new Date().toISOString() })
+      if (error) {
+        alert("Ошибка при добавлении лайка: " + error.message)
+      }
+    }
+
+    // После любого действия загружаем фактическое количество лайков из базы и реакции пользователя
+    await loadPosts()
+    if (refreshReactions) {
+      await refreshReactions()
+    }
   }
 
-  // При загрузке постов - гарантируем что лайки минимум 0 (на всякий случай)
+  // Получаем посты + количество лайков из таблицы post_likes (aggregate)
   async function loadPosts() {
+    // Получим все посты, а потом отдельно для них count лайков из post_likes для каждого поста
     const { data: allPosts, error } = await supabase
       .from("posts")
       .select("*")
@@ -270,10 +298,32 @@ export default function Posts({ user }) {
     }
     setLoadError("")
 
-    // Убираем возможность отрицательных лайков
+    // Узнаём id постов
+    const postIds = (allPosts || [])
+      .filter(isVisibleInFeed)
+      .map(p => p.id)
+
+    // Запрашиваем аггрегированные лайки для всех постов
+    let likesByPostId = {}
+    if (postIds.length > 0) {
+      // получаем список лайков для всех постов
+      const { data: likeCounts, error: likesError } = await supabase
+        .from("post_likes")
+        .select("post_id, count:id")
+        .in("post_id", postIds)
+        .group("post_id") // агрегируем по post_id
+
+      if (!likesError && Array.isArray(likeCounts)) {
+        for (const like of likeCounts) {
+          likesByPostId[like.post_id] = Number(like.count ?? 0)
+        }
+      }
+    }
+
+    // Склеиваем посты с их лайками
     const sanitizedPosts = (allPosts || []).filter(isVisibleInFeed).map(p => ({
       ...p,
-      likes: Math.max(Number(p.likes ?? 0), 0),
+      likes: Math.max(Number(likesByPostId[p.id] ?? 0), 0),
     }))
     setPosts(sanitizedPosts)
     setProfilesById(await loadAllNicknamesMap(user))
@@ -296,7 +346,7 @@ export default function Posts({ user }) {
       content: text.trim(),
       user_id: user.id,
       post_source: POST_SOURCE_FEED,
-      // лайки по умолчанию 0 в бд
+      // лайки по умолчанию 0 в бд, но они считаются по post_likes теперь
       likes: 0,
       created_at: new Date().toISOString(),
     }
