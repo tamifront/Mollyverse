@@ -4,18 +4,12 @@ import { POST_SOURCE_FEED, POST_SOURCE_PROFILE, isVisibleInFeed } from "../utils
 import { getPostAuthorNickname, loadAllNicknamesMap } from "../utils/profiles"
 import { usePostReactions } from "../hooks/usePostReactions"
 
-// Правильное казахстанское время: день.месяц.год часы:минуты (Asia/Almaty, UTC+6, с учётом переходов и нормальное время вне зависимости от локали)
 function formatKZDateAlmaty(dt) {
   if (!dt) return ""
   try {
     let dateObj
     if (typeof dt === "string") {
-      // ISO датастроки из супабейса, без таймзоны — считаем что это UTC (или local но обычно UTC)
-      // если есть "Z" (UTC), то new Date(dt) - норм
-      // если нет "Z", то Date.parse воспринимает как local, но Supabase хранит в UTC
-      // Поэтому: нормализуем всегда к UTC, потом представим в алматинское время
       if (!dt.endsWith("Z") && !dt.includes("+")) {
-        // добавим Z если нет, иначе как local (неправильно)
         dateObj = new Date(dt + "Z")
       } else {
         dateObj = new Date(dt)
@@ -26,8 +20,6 @@ function formatKZDateAlmaty(dt) {
       return ""
     }
 
-    // Используем Intl.DateTimeFormat чтобы получить реальное время в Алматы (учитывает летнее/зимнее и прочее)
-    // Но fallback для node <14
     try {
       const options = {
         timeZone: "Asia/Almaty",
@@ -38,14 +30,10 @@ function formatKZDateAlmaty(dt) {
         minute: "2-digit",
         hour12: false,
       }
-      // "dd.mm.yyyy, HH:MM"
       const parts = new Intl.DateTimeFormat("ru-RU", options).formatToParts(dateObj)
       const get = type => parts.find(p => p.type === type)?.value ?? ""
-      // Порядок: день.месяц.год часы:минуты
       return `${get("day")}.${get("month")}.${get("year")} ${get("hour")}:${get("minute")}`
     } catch (e) {
-      // fallback если Intl.DateTimeFormat не поддерживает таймзоны
-      // смещаем время вручную на +6 часов к UTC
       const utc = dateObj.getTime()
       const tzDateObj = new Date(utc + 6 * 60 * 60 * 1000)
       const day = String(tzDateObj.getUTCDate()).padStart(2, "0")
@@ -60,17 +48,19 @@ function formatKZDateAlmaty(dt) {
   }
 }
 
-const redditCardStyles = {
+// -- Twitter/Reddit inspired styles --
+const cardTheme = {
   container: {
     minHeight: '100vh',
-    background: 'linear-gradient(135deg, #232946 0%, #1a1a22 100%)',
-    padding: '32px 0'
+    background: 'linear-gradient(135deg, #181c22 0%, #232946 100%)',
+    padding: '36px 0',
+    fontFamily: "'Inter', 'Segoe UI', Arial, sans-serif",
   },
   pageTitle: {
     fontWeight: 800,
     fontSize: 32,
-    margin: "0 0 36px 0",
-    color: "#fff",
+    margin: "0 0 32px 0",
+    color: "#ffeefb",
     textAlign: "center",
     letterSpacing: "1px",
     textShadow: "0 2px 10px rgba(30,0,10,0.10)"
@@ -79,91 +69,147 @@ const redditCardStyles = {
     display: "flex",
     flexDirection: "column",
     gap: 12,
-    background: "rgba(34,39,46,0.94)",
-    borderRadius: 12,
-    maxWidth: 540,
-    margin: "0 auto 28px auto",
-    padding: "22px 24px 18px 24px",
-    boxShadow: "0 4px 24px 0 rgba(0,0,0,0.13), 0 1.5px 10px 0 rgba(255,0,20,0.04)"
+    background: "rgba(36,39,41,.92)",
+    borderRadius: 18,
+    maxWidth: 520,
+    margin: "0 auto 32px auto",
+    padding: "20px 20px 18px 20px",
+    boxShadow: "0 2px 12px 0 rgba(0,0,0,0.13), 0 1.5px 9px 0 rgba(255,0,20,0.04)"
   },
   input: {
-    borderRadius: 8,
-    border: "1.2px solid rgba(255,69,0,0.18)",
-    padding: "12px 13px",
+    borderRadius: 10,
+    border: "1.2px solid rgba(70,70,80,0.22)",
+    padding: "11px 13px",
     fontSize: 18,
-    background: "rgba(0,0,0,0.23)",
-    color: "#fff",
+    background: "#20222d",
+    color: "#f5f5f7",
     outline: "none",
-    marginBottom: 3
+    marginBottom: 3,
+    resize: 'vertical'
   },
   button: {
-    background: "#20232f",
-    border: "1.5px solid rgba(255,0,30,0.18)",
+    background: "#2C2F3C",
+    border: "1.5px solid #7979bb30",
     color: "#fff",
     borderRadius: 7,
     cursor: "pointer",
-    padding: "7px 21px",
+    padding: "8px 22px",
     fontWeight: 700,
     fontSize: 16,
     alignSelf: "flex-end",
-    transition: "background .14s, border .14s"
+    transition: "background .13s, border .11s"
   },
   postsContainer: {
-    marginTop: 18,
+    marginTop: 8,
     display: "flex",
     flexDirection: "column",
-    gap: 26,
+    gap: 16,
     width: "100%",
-    maxWidth: 620,
+    maxWidth: 610,
     marginLeft: "auto",
     marginRight: "auto"
   },
   card: {
     background: "rgba(34,39,46,0.98)",
-    borderRadius: 14,
-    boxShadow: "0 4px 22px 0 rgba(0,0,0,0.13), 0 1.5px 10px 0 rgba(255,0,20,0.04)",
-    border: "1px solid rgba(255,69,0,0.13)",
-    padding: "24px 28px 18px 22px",
+    borderRadius: 18,
+    // borderTop: "3px solid #5366fd30",
+    border: "1.5px solid #404878",
+    boxShadow: "0 1.5px 11px 0 rgba(0,0,0,0.09), 0 1.5px 7px 0 rgba(255,0,20,0.02)",
+    padding: "20px 20px 15px 18px",
     display: "flex",
-    alignItems: "flex-start",
-    gap: 16,
+    gap: 14,
     position: "relative",
-    transition: "box-shadow .13s"
+    transition: "box-shadow .15s, border .17s",
+    flexDirection: "row",
   },
-  voting: {
+  avatar: {
+    flexShrink: 0,
+    width: 46,
+    height: 46,
+    borderRadius: "50%",
+    background: "linear-gradient(135deg, #495aff 55%, #ff4157 100%)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    color: "#fff",
+    fontWeight: 700,
+    fontSize: 22,
+    marginTop: 2,
+    userSelect: "none",
+    boxShadow: "0 2px 12px rgba(20,44,245,0.09)"
+  },
+  main: {
+    flex: 1,
     display: "flex",
     flexDirection: "column",
+    minWidth: 0
+  },
+  cardHeader: {
+    display: "flex",
     alignItems: "center",
-    marginRight: 14,
-    marginTop: 4
-  },
-  content: {
-    flex: 1,
-    fontSize: 18,
-    color: "#ecebed",
-    marginBottom: 12,
-    wordBreak: "break-word",
-    whiteSpace: "pre-line"
-  },
-  date: {
-    color: "#96a0b5",
-    fontSize: 13,
+    gap: 16,
     marginBottom: 8,
+    marginTop: 0
   },
   author: {
-    color: "#aac6f6",
+    color: "#84aaff",
     fontWeight: 700,
-    fontSize: 16,
-    marginBottom: 4
+    fontSize: 17,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    maxWidth: 180
+  },
+  date: {
+    color: "#8196b2",
+    fontSize: 13,
+    fontWeight: 400,
+  },
+  content: {
+    fontSize: 18,
+    color: "#f1f0f3",
+    marginBottom: 15,
+    marginTop: 1,
+    wordBreak: "break-word",
+    whiteSpace: "pre-line",
+    lineHeight: 1.55,
   },
   cardActions: {
     display: "flex",
-    flexWrap: "wrap",
-    gap: 18,
+    gap: 28,
     alignItems: "center",
-    marginTop: 8,
-    fontSize: 17
-  }
+    marginTop: 2,
+    marginBottom: 0,
+    fontSize: 17,
+    opacity: 0.97,
+    userSelect: "none"
+  },
+  iconAction: {
+    background: "none",
+    border: "none",
+    color: "#bcbde3",
+    fontSize: 19,
+    fontWeight: 500,
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    cursor: "pointer",
+    padding: "0 2px",
+    borderRadius: 5,
+    transition: "background .11s, color .12s"
+  },
+  iconActionLiked: {
+    color: "#e64367",
+    backgroundColor: "rgba(255,54,78,0.06)"
+  },
+  iconActionFav: {
+    color: "#ffd36b",
+    backgroundColor: "rgba(250,230,82,0.05)"
+  },
+}
+
+function getAvatarLetter(name) {
+  if (!name) return "U"
+  return String(name).trim()[0]?.toUpperCase() || "U"
 }
 
 export default function Posts({ user }) {
@@ -178,6 +224,37 @@ export default function Posts({ user }) {
     toggleFavorite,
   } = usePostReactions(user)
 
+  // Система лайков как в соцсетях: лайки минимум 0, начальное значение 0, при лайке +1
+  async function handleToggleLike(postId) {
+    if (!user?.id) {
+      alert("Войдите в аккаунт, чтобы ставить лайки")
+      return
+    }
+
+    const isLiked = likedPostIds.includes(String(postId))
+
+    setPosts(posts =>
+      posts.map(p => {
+        if (p.id === postId) {
+          let currentLikes = Number(p.likes ?? 0)
+          if (isNaN(currentLikes) || currentLikes < 0) currentLikes = 0
+          let newLikes
+          if (isLiked) {
+            // Убираем лайк, не меньше 0
+            newLikes = Math.max(currentLikes - 1, 0)
+          } else {
+            // Ставим лайк, +1
+            newLikes = currentLikes + 1
+          }
+          return { ...p, likes: newLikes }
+        }
+        return p
+      })
+    )
+    toggleLike(postId)
+  }
+
+  // При загрузке постов - гарантируем что лайки минимум 0 (на всякий случай)
   async function loadPosts() {
     const { data: allPosts, error } = await supabase
       .from("posts")
@@ -193,7 +270,12 @@ export default function Posts({ user }) {
     }
     setLoadError("")
 
-    setPosts((allPosts || []).filter(isVisibleInFeed))
+    // Убираем возможность отрицательных лайков
+    const sanitizedPosts = (allPosts || []).filter(isVisibleInFeed).map(p => ({
+      ...p,
+      likes: Math.max(Number(p.likes ?? 0), 0),
+    }))
+    setPosts(sanitizedPosts)
     setProfilesById(await loadAllNicknamesMap(user))
   }
 
@@ -214,12 +296,17 @@ export default function Posts({ user }) {
       content: text.trim(),
       user_id: user.id,
       post_source: POST_SOURCE_FEED,
+      // лайки по умолчанию 0 в бд
+      likes: 0,
+      created_at: new Date().toISOString(),
     }
     let { error } = await supabase.from("posts").insert(payload)
     if (error) {
       const { error: fallbackError } = await supabase.from("posts").insert({
         content: text.trim(),
         user_id: user.id,
+        likes: 0,
+        created_at: new Date().toISOString(),
       })
       error = fallbackError
     }
@@ -234,18 +321,17 @@ export default function Posts({ user }) {
   }
 
   return (
-    <div style={redditCardStyles.container}>
-      <h1 style={redditCardStyles.pageTitle}>📰 Посты</h1>
-
+    <div style={cardTheme.container}>
+      <h1 style={cardTheme.pageTitle}>📰 Посты</h1>
       <form
-        style={redditCardStyles.newPostForm}
+        style={cardTheme.newPostForm}
         onSubmit={e => {
           e.preventDefault()
           createPost()
         }}
       >
         <textarea
-          style={redditCardStyles.input}
+          style={cardTheme.input}
           value={text}
           onChange={(e) => setText(e.target.value)}
           placeholder="Что у тебя нового?"
@@ -254,117 +340,88 @@ export default function Posts({ user }) {
         <button
           type="submit"
           style={{
-            ...redditCardStyles.button,
+            ...cardTheme.button,
             opacity: !text.trim() ? 0.5 : 1,
             pointerEvents: !text.trim() ? "none" : "auto"
           }}
           disabled={!text.trim()}
         >
-          💾 Сохранить
+          <span style={{ fontWeight: 800, marginRight: 6 }}>➤</span> Опубликовать
         </button>
       </form>
 
-      <div style={redditCardStyles.postsContainer}>
+      <div style={cardTheme.postsContainer}>
         {loadError ? (
-          <p style={{ color: "#ff8a8a", textAlign: "center" }}>
+          <p style={{ color: "#ff8a8a", textAlign: "center", fontSize: 17 }}>
             Ошибка: {loadError}. Выполни supabase/fix_all.sql в Supabase.
           </p>
         ) : null}
         {!loadError && posts.length === 0 ? (
-          <p style={{ color: "#bbb", textAlign: "center" }}>
+          <p style={{ color: "#bbb", textAlign: "center", fontSize: 16 }}>
             В ленте пока нет постов. Напиши пост в профиле.
           </p>
         ) : null}
-        {posts.map((p) => (
-          <div key={p.id} style={redditCardStyles.card}>
-            <div style={redditCardStyles.voting}>
-              <span style={{
-                fontSize: 25,
-                color: "#ff4157",
-                fontWeight: 700,
-                marginTop: 3,
-                marginBottom: 3,
-                userSelect: "none"
-              }}>▲</span>
-              <span style={{
-                fontWeight: 700,
-                fontSize: 16,
-                color: "#ff4157"
-              }}>{p.likes ?? 0}</span>
-              <span style={{
-                fontSize: 23,
-                color: "#666",
-                fontWeight: 600,
-                marginTop: 4,
-                userSelect: "none"
-              }}>▼</span>
-            </div>
-            <div style={{flex: 1, display: "flex", flexDirection: "column"}}>
-              {/* Ник автора */}
-              <div style={redditCardStyles.author}>
-                {getPostAuthorNickname(p, profilesById, user)}
+        {posts.map((p) => {
+          const authorNick = getPostAuthorNickname(p, profilesById, user)
+          return (
+            <div key={p.id} style={cardTheme.card}>
+              <div style={cardTheme.avatar}>
+                {getAvatarLetter(authorNick)}
               </div>
-              <div style={redditCardStyles.date}>
-                {formatKZDateAlmaty(p.created_at)}
-              </div>
-              <div style={redditCardStyles.content}>
-                {p.content}
-              </div>
-              <div style={redditCardStyles.cardActions}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!user?.id) {
-                      alert("Войдите в аккаунт, чтобы ставить лайки")
-                      return
+              <div style={cardTheme.main}>
+                <div style={cardTheme.cardHeader}>
+                  <span style={cardTheme.author}>{authorNick}</span>
+                  {/* Добавим форматированную дату публикации поста */}
+                  <span style={cardTheme.date} title={p.created_at}>
+                    {formatKZDateAlmaty(p.created_at)}
+                  </span>
+                </div>
+                <div style={cardTheme.content}>
+                  {p.content}
+                </div>
+                <div style={cardTheme.cardActions}>
+                  <button
+                    type="button"
+                    onClick={() => handleToggleLike(p.id)}
+                    style={{
+                      ...cardTheme.iconAction,
+                      ...(likedPostIds.includes(String(p.id)) ? cardTheme.iconActionLiked : null)
+                    }}
+                    title={likedPostIds.includes(String(p.id)) ? "Убрать лайк" : "Поставить лайк"}
+                  >
+                    <span style={{ fontSize: 21, marginRight: 3 }}>
+                      {likedPostIds.includes(String(p.id)) ? "❤️" : "🤍"}
+                    </span>
+                    <span style={{
+                      fontWeight: 700, fontSize: 15,
+                    }}>{Math.max(Number(p.likes ?? 0), 0)}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!user?.id) {
+                        alert("Войдите в аккаунт, чтобы добавлять в избранное")
+                        return
+                      }
+                      toggleFavorite(p.id)
+                    }}
+                    style={{
+                      ...cardTheme.iconAction,
+                      ...(favoritePostIds.includes(String(p.id)) ? cardTheme.iconActionFav : null)
+                    }}
+                    title={
+                      favoritePostIds.includes(String(p.id))
+                        ? "Убрать из избранного"
+                        : "В избранное"
                     }
-                    toggleLike(p.id)
-                  }}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    color: likedPostIds.includes(String(p.id)) ? "#ff5277" : "#c7c7c7",
-                    fontSize: 18,
-                    display: "flex",
-                    alignItems: "center",
-                    cursor: "pointer",
-                  }}
-                  title={likedPostIds.includes(String(p.id)) ? "Убрать лайк" : "Поставить лайк"}
-                >
-                  <span style={{ fontSize: 21, marginRight: 4 }}>❤️</span>
-                  {likedPostIds.includes(String(p.id)) ? "Уже нравится" : "Лайк"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!user?.id) {
-                      alert("Войдите в аккаунт, чтобы добавлять в избранное")
-                      return
-                    }
-                    toggleFavorite(p.id)
-                  }}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    color: favoritePostIds.includes(String(p.id)) ? "#ffd36b" : "#c7c7c7",
-                    fontSize: 18,
-                    display: "flex",
-                    alignItems: "center",
-                    cursor: "pointer",
-                  }}
-                  title={
-                    favoritePostIds.includes(String(p.id))
-                      ? "Убрать из избранного"
-                      : "В избранное"
-                  }
-                >
-                  <span style={{ fontSize: 21, marginRight: 4 }}>⭐</span>
-                  {favoritePostIds.includes(String(p.id)) ? "В избранном" : "В избранное"}
-                </button>
+                  >
+                    <span style={{ fontSize: 21 }}>{favoritePostIds.includes(String(p.id)) ? "⭐" : "☆"}</span>
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
     </div>
   )
