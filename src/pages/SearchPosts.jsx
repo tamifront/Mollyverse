@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { supabase } from "../lib/supabase"
 import { formatKZDate } from "../utils/datetime"
+import { fetchNicknamesByUserIds, getPostAuthorNickname } from "../utils/profiles"
 
 const styles = {
   container: {
@@ -93,23 +94,39 @@ export default function SearchPosts({ user }) {
   useEffect(() => {
     async function loadData() {
       setLoading(true)
-      const [{ data: postsData, error: postsError }, { data: profilesData, error: profilesError }] =
-        await Promise.all([
-          supabase.from("posts").select("*").order("created_at", { ascending: false }),
-          supabase.from("profiles").select("id,nickname,bio"),
-        ])
 
-      if (postsError) {
-        alert(postsError.message || "Не удалось загрузить посты")
+      const { data: joinedPosts, error: joinError } = await supabase
+        .from("posts")
+        .select("*, profiles!posts_user_id_fkey ( id, nickname )")
+        .order("created_at", { ascending: false })
+
+      let postsData = joinedPosts
+      if (joinError) {
+        const { data, error: postsError } = await supabase
+          .from("posts")
+          .select("*")
+          .order("created_at", { ascending: false })
+        if (postsError) {
+          alert(postsError.message || "Не удалось загрузить посты")
+          postsData = []
+        } else {
+          postsData = data
+        }
       }
+
+      const { data: profilesData, error: profilesError } = await supabase
+        .from("profiles")
+        .select("id,nickname,bio")
+
       if (profilesError) {
-        alert(profilesError.message || "Не удалось загрузить профили")
+        console.error("Профили:", profilesError)
       }
 
-      const byId = {}
-      ;(profilesData || []).forEach((p) => {
-        byId[p.id] = p.nickname || "без ника"
-      })
+      const userIds = (postsData || []).map((p) => p.user_id).filter(Boolean)
+      const byId = await fetchNicknamesByUserIds(userIds)
+      for (const p of profilesData || []) {
+        byId[p.id] = p.nickname?.trim() || byId[p.id] || "без ника"
+      }
 
       setPosts(postsData || [])
       setUsers(profilesData || [])
@@ -150,11 +167,11 @@ export default function SearchPosts({ user }) {
 
     return posts.filter((post) => {
       const content = (post.content || "").toLowerCase()
-      const nickname = (profilesById[post.user_id] || "").toLowerCase()
+      const nickname = getPostAuthorNickname(post, profilesById, user).toLowerCase()
       return content.includes(normalized) || nickname.includes(normalized)
     })
-  }, [posts, profilesById, query])
-
+  }, [posts, profilesById, query, user])
+Н
   const filteredUsers = useMemo(() => {
     const normalized = query.trim().toLowerCase()
     if (!normalized) return []
@@ -316,7 +333,7 @@ export default function SearchPosts({ user }) {
             <div key={post.id} style={styles.card}>
               <div style={styles.header}>
                 <span style={styles.nickname}>
-                  {profilesById[post.user_id] || "без ника"}
+                  {getPostAuthorNickname(post, profilesById, user)}
                 </span>
                 <span style={styles.date}>
                   {formatKZDate(post.created_at)}

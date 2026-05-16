@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 import { supabase } from "../lib/supabase"
 import { POST_SOURCE_FEED, POST_SOURCE_PROFILE, isVisibleInFeed } from "../utils/postSource"
+import { fetchNicknamesByUserIds, getPostAuthorNickname } from "../utils/profiles"
 
 // Чистый Казахстанский формат времени: день.месяц.год часы:минуты (по времени Алматы/КЗ)
 function formatKZDateAlmaty(dt) {
@@ -123,51 +124,58 @@ export default function Posts({ user }) {
 
   async function loadPosts() {
     let postsData = []
-    const { data: filtered, error: filterError } = await supabase
+    const selectWithAuthor = "*, profiles!posts_user_id_fkey ( id, nickname )"
+
+    const { data: joined, error: joinError } = await supabase
       .from("posts")
-      .select("*")
+      .select(selectWithAuthor)
       .eq("post_source", POST_SOURCE_PROFILE)
       .order("created_at", { ascending: false })
 
-    if (!filterError) {
-      postsData = filtered || []
+    if (!joinError && joined) {
+      postsData = joined
     } else {
-      const { data: allPosts, error: allError } = await supabase
+      const { data: filtered, error: filterError } = await supabase
         .from("posts")
         .select("*")
+        .eq("post_source", POST_SOURCE_PROFILE)
         .order("created_at", { ascending: false })
-      if (allError) {
-        setPosts([])
-        return
+
+      if (!filterError) {
+        postsData = filtered || []
+      } else {
+        const { data: allPosts, error: allError } = await supabase
+          .from("posts")
+          .select("*")
+          .order("created_at", { ascending: false })
+        if (allError) {
+          setPosts([])
+          setProfilesById({})
+          return
+        }
+        postsData = (allPosts || []).filter(isVisibleInFeed)
       }
-      postsData = (allPosts || []).filter(isVisibleInFeed)
     }
 
     setPosts(postsData)
 
-    // собрать нужны ли профили
-    // собираем только уникальные user_id из постов
-    const userIds = Array.from(new Set((postsData || []).map(p => p.user_id).filter(Boolean)))
-    if (userIds.length === 0) {
-      setProfilesById({})
-      return
-    }
-    // берем никнеймы по user_id
-    const { data: profilesData } = await supabase
-      .from("profiles")
-      .select("id,nickname")
-      .in("id", userIds)
-    // формируем быстрый доступ по id
-    const mapping = {}
-    for (const prof of (profilesData || [])) {
-      mapping[prof.id] = prof.nickname || "без ника"
+    const userIds = postsData.map((p) => p.user_id).filter(Boolean)
+    if (user?.id && !userIds.includes(user.id)) userIds.push(user.id)
+    const mapping = await fetchNicknamesByUserIds(userIds)
+    if (user?.id && !mapping[user.id]) {
+      const { data: mine } = await supabase
+        .from("profiles")
+        .select("id, nickname")
+        .eq("id", user.id)
+        .maybeSingle()
+      if (mine?.nickname) mapping[user.id] = mine.nickname.trim()
     }
     setProfilesById(mapping)
   }
 
   useEffect(() => {
     loadPosts()
-  }, [])
+  }, [user?.id])
 
   async function createPost() {
     if (!user?.id) {
@@ -260,7 +268,7 @@ export default function Posts({ user }) {
             <div style={{flex: 1, display: "flex", flexDirection: "column"}}>
               {/* Ник автора */}
               <div style={redditCardStyles.author}>
-                {profilesById[p.user_id] || "без ника"}
+                {getPostAuthorNickname(p, profilesById, user)}
               </div>
               <div style={redditCardStyles.date}>
                 {formatKZDateAlmaty(p.created_at)}
