@@ -1,8 +1,43 @@
 import { useEffect, useMemo, useState } from "react"
 import { supabase } from "../lib/supabase"
 // Заменяем import на форматтер для Казахстана
-import { formatKZDateAlmaty } from "../utils/datetime"
 import { getPostAuthorNickname, loadAllNicknamesMap } from "../utils/profiles"
+
+// ———— реальное казахстанское время (Алматы/Астана/Актобе и т.д.) ————
+// Функция принудительно отображает время в Казахстане
+function formatKZDate(dateStr) {
+  if (!dateStr) return ""
+  // Force UTC to be parsed, then convert to Kazakhstan TZ (UTC+6)
+  const d = new Date(dateStr)
+  // Date string is often in ISO 8601, interpreted as UTC by Date
+  // Kazakhstan timezone is UTC+6 (Almaty, Astana)
+  const utc =
+    d.getUTCFullYear() +
+    "-" +
+    String(d.getUTCMonth() + 1).padStart(2, "0") +
+    "-" +
+    String(d.getUTCDate()).padStart(2, "0") +
+    "T" +
+    String(d.getUTCHours()).padStart(2, "0") +
+    ":" +
+    String(d.getUTCMinutes()).padStart(2, "0") +
+    ":" +
+    String(d.getUTCSeconds()).padStart(2, "0") +
+    "Z"
+  // Build a Date object for UTC, add +6 offset
+  const dt = new Date(utc)
+  // +6 hours is 6 * 60 * 60 * 1000 = 21600000 ms
+  const msKZ = dt.getTime() + 6 * 60 * 60 * 1000
+  const kz = new Date(msKZ)
+  // prettify
+  const yyyy = kz.getFullYear()
+  const mm = String(kz.getMonth() + 1).padStart(2, "0")
+  const dd = String(kz.getDate()).padStart(2, "0")
+  const hh = String(kz.getHours()).padStart(2, "0")
+  const min = String(kz.getMinutes()).padStart(2, "0")
+  return `${dd}.${mm}.${yyyy} ${hh}:${min}`
+}
+// ———————————————————————————————————————————————————————————————
 
 const styles = {
   container: {
@@ -330,8 +365,8 @@ export default function SearchPosts({ user }) {
                   {getPostAuthorNickname(post, profilesById, user)}
                 </span>
                 <span style={styles.date}>
-                  {/* Используем алиматинское/казахстанское время */}
-                  {formatKZDateAlmaty(post.created_at)}
+                  {/* Казахстанское время! */}
+                  {formatKZDate(post.created_at)}
                 </span>
               </div>
               <p style={styles.content}>{post.content}</p>
