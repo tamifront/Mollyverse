@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
 import { supabase } from "../lib/supabase"
+import { POST_SOURCE_FEED, POST_SOURCE_PROFILE, isVisibleInFeed } from "../utils/postSource"
 
 // Чистый Казахстанский формат времени: день.месяц.год часы:минуты (по времени Алматы/КЗ)
 function formatKZDateAlmaty(dt) {
@@ -115,23 +116,34 @@ const redditCardStyles = {
   }
 }
 
-export default function Posts() {
+export default function Posts({ user }) {
   const [posts, setPosts] = useState([])
   const [text, setText] = useState("")
   const [profilesById, setProfilesById] = useState({})
 
   async function loadPosts() {
-    // получаем посты + user_id
-    const { data: postsData, error: postsError } = await supabase
+    let postsData = []
+    const { data: filtered, error: filterError } = await supabase
       .from("posts")
       .select("*")
+      .eq("post_source", POST_SOURCE_PROFILE)
       .order("created_at", { ascending: false })
 
-    if (postsError) {
-      setPosts([])
-      return
+    if (!filterError) {
+      postsData = filtered || []
+    } else {
+      const { data: allPosts, error: allError } = await supabase
+        .from("posts")
+        .select("*")
+        .order("created_at", { ascending: false })
+      if (allError) {
+        setPosts([])
+        return
+      }
+      postsData = (allPosts || []).filter(isVisibleInFeed)
     }
-    setPosts(postsData || [])
+
+    setPosts(postsData)
 
     // собрать нужны ли профили
     // собираем только уникальные user_id из постов
@@ -158,13 +170,27 @@ export default function Posts() {
   }, [])
 
   async function createPost() {
+    if (!user?.id) {
+      alert("Войдите в аккаунт")
+      return
+    }
     if (!text.trim()) {
       alert("Пост не может быть пустым.")
       return
     }
-    const { error } = await supabase
-      .from("posts")
-      .insert({ content: text }) // user_id добавляется автоматически через row level security/policies или триггер? Иначе нужно добавить
+    const payload = {
+      content: text.trim(),
+      user_id: user.id,
+      post_source: POST_SOURCE_FEED,
+    }
+    let { error } = await supabase.from("posts").insert(payload)
+    if (error) {
+      const { error: fallbackError } = await supabase.from("posts").insert({
+        content: text.trim(),
+        user_id: user.id,
+      })
+      error = fallbackError
+    }
 
     if (error) {
       alert(error.message)

@@ -1,7 +1,7 @@
 import "../styles/Sidebar.css"
 import { useState } from "react"
 
-export default function Sidebar({ setPage }) {
+export default function Sidebar({ setPage, updatesUnread = false }) {
   const [isMobileOpen, setIsMobileOpen] = useState(false)
 
   const goToPage = (page) => {
@@ -36,8 +36,13 @@ export default function Sidebar({ setPage }) {
           📝 Лента
         </button>
 
-        <button onClick={() => goToPage("updates")}>
-          📢 Обновления
+        <button
+          type="button"
+          className={`sidebar-nav-btn ${updatesUnread ? "updates-unread" : ""}`}
+          onClick={() => goToPage("updates")}
+        >
+          <span>📢 Обновления</span>
+          {updatesUnread && <span className="updates-unread-dot" aria-hidden />}
         </button>
 
         <button onClick={() => goToPage("search-posts")}>

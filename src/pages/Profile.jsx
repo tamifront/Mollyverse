@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from "react"
 import { supabase } from "../lib/supabase"
 import { formatKZDate } from "../utils/datetime"
+import { POST_SOURCE_PROFILE } from "../utils/postSource"
 
 // ===== localStorage helpers =====
 function saveToLs(key, value) {
@@ -242,11 +243,21 @@ export default function Profile({ user, profileUserId }) {
     if (!text.trim()) return alert("Пост не может быть пустым")
     if (profileUserId && profileUserId !== user.id) return alert("Нельзя создавать пост не на своем аккаунте!")
 
-    const { error } = await supabase.from("posts").insert({
+    const payload = {
       user_id: user.id,
       content: text.trim(),
-      likes: 0
-    })
+      likes: 0,
+      post_source: POST_SOURCE_PROFILE,
+    }
+    let { error } = await supabase.from("posts").insert(payload)
+    if (error) {
+      const { error: fallbackError } = await supabase.from("posts").insert({
+        user_id: user.id,
+        content: text.trim(),
+        likes: 0,
+      })
+      error = fallbackError
+    }
     if (error) {
       alert(error.message || "Не удалось создать пост")
       return

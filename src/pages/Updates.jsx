@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { supabase } from "../lib/supabase"
 import { formatKZDate } from "../utils/datetime"
+import { markUpdatesAsRead } from "../utils/updatesUnread"
 
 const OWNER_USER_ID = (import.meta.env.VITE_OWNER_USER_ID || "").trim()
 
@@ -68,7 +69,7 @@ const styles = {
   },
 }
 
-export default function Updates({ user }) {
+export default function Updates({ user, onUpdatesChange }) {
   const [updates, setUpdates] = useState([])
   const [text, setText] = useState("")
 
@@ -95,6 +96,12 @@ export default function Updates({ user }) {
     loadUpdates()
   }, [])
 
+  useEffect(() => {
+    if (!user?.id || updates.length === 0) return
+    const latest = updates[0]?.created_at
+    if (latest) markUpdatesAsRead(user.id, latest)
+  }, [updates, user?.id])
+
   async function createUpdate() {
     if (!canPublish) {
       alert("Публиковать обновления может только владелица аккаунта")
@@ -111,7 +118,9 @@ export default function Updates({ user }) {
       return
     }
     setText("")
-    loadUpdates()
+    await loadUpdates()
+    onUpdatesChange?.()
+    window.dispatchEvent(new CustomEvent("updates-published"))
   }
 
   return (
