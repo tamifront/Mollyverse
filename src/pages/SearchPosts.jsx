@@ -94,44 +94,44 @@ export default function SearchPosts({ user }) {
   useEffect(() => {
     async function loadData() {
       setLoading(true)
-
-      const { data: joinedPosts, error: joinError } = await supabase
-        .from("posts")
-        .select("*, profiles!posts_user_id_fkey ( id, nickname )")
-        .order("created_at", { ascending: false })
-
-      let postsData = joinedPosts
-      if (joinError) {
-        const { data, error: postsError } = await supabase
+      try {
+        const { data: postsData, error: postsError } = await supabase
           .from("posts")
           .select("*")
           .order("created_at", { ascending: false })
+
         if (postsError) {
-          alert(postsError.message || "Не удалось загрузить посты")
-          postsData = []
+          console.error(postsError)
+          setPosts([])
         } else {
-          postsData = data
+          setPosts(postsData || [])
         }
+
+        const { data: profilesData, error: profilesError } = await supabase
+          .from("profiles")
+          .select("id,nickname,bio")
+
+        if (profilesError) {
+          console.error("Профили:", profilesError)
+        }
+
+        const byId = {}
+        for (const p of profilesData || []) {
+          byId[p.id] = p.nickname?.trim() || "без ника"
+        }
+
+        const userIds = (postsData || []).map((p) => p.user_id).filter(Boolean)
+        const fromPosts = await fetchNicknamesByUserIds(userIds)
+        setProfilesById({ ...byId, ...fromPosts })
+        setUsers(profilesData || [])
+      } catch (e) {
+        console.error(e)
+        setPosts([])
+        setUsers([])
+        setProfilesById({})
+      } finally {
+        setLoading(false)
       }
-
-      const { data: profilesData, error: profilesError } = await supabase
-        .from("profiles")
-        .select("id,nickname,bio")
-
-      if (profilesError) {
-        console.error("Профили:", profilesError)
-      }
-
-      const userIds = (postsData || []).map((p) => p.user_id).filter(Boolean)
-      const byId = await fetchNicknamesByUserIds(userIds)
-      for (const p of profilesData || []) {
-        byId[p.id] = p.nickname?.trim() || byId[p.id] || "без ника"
-      }
-
-      setPosts(postsData || [])
-      setUsers(profilesData || [])
-      setProfilesById(byId)
-      setLoading(false)
     }
 
     loadData()
@@ -171,7 +171,7 @@ export default function SearchPosts({ user }) {
       return content.includes(normalized) || nickname.includes(normalized)
     })
   }, [posts, profilesById, query, user])
-Н
+
   const filteredUsers = useMemo(() => {
     const normalized = query.trim().toLowerCase()
     if (!normalized) return []

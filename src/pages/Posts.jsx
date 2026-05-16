@@ -123,54 +123,31 @@ export default function Posts({ user }) {
   const [profilesById, setProfilesById] = useState({})
 
   async function loadPosts() {
-    let postsData = []
-    const selectWithAuthor = "*, profiles!posts_user_id_fkey ( id, nickname )"
-
-    const { data: joined, error: joinError } = await supabase
+    const { data: allPosts, error } = await supabase
       .from("posts")
-      .select(selectWithAuthor)
-      .eq("post_source", POST_SOURCE_PROFILE)
+      .select("*")
       .order("created_at", { ascending: false })
 
-    if (!joinError && joined) {
-      postsData = joined
-    } else {
-      const { data: filtered, error: filterError } = await supabase
-        .from("posts")
-        .select("*")
-        .eq("post_source", POST_SOURCE_PROFILE)
-        .order("created_at", { ascending: false })
-
-      if (!filterError) {
-        postsData = filtered || []
-      } else {
-        const { data: allPosts, error: allError } = await supabase
-          .from("posts")
-          .select("*")
-          .order("created_at", { ascending: false })
-        if (allError) {
-          setPosts([])
-          setProfilesById({})
-          return
-        }
-        postsData = (allPosts || []).filter(isVisibleInFeed)
-      }
+    if (error) {
+      console.error(error)
+      setPosts([])
+      setProfilesById({})
+      return
     }
 
+    const postsData = (allPosts || []).filter(isVisibleInFeed)
     setPosts(postsData)
 
     const userIds = postsData.map((p) => p.user_id).filter(Boolean)
     if (user?.id && !userIds.includes(user.id)) userIds.push(user.id)
-    const mapping = await fetchNicknamesByUserIds(userIds)
-    if (user?.id && !mapping[user.id]) {
-      const { data: mine } = await supabase
-        .from("profiles")
-        .select("id, nickname")
-        .eq("id", user.id)
-        .maybeSingle()
-      if (mine?.nickname) mapping[user.id] = mine.nickname.trim()
+
+    const { data: allProfiles } = await supabase.from("profiles").select("id, nickname")
+    const mapping = {}
+    for (const p of allProfiles || []) {
+      mapping[p.id] = p.nickname?.trim() || "без ника"
     }
-    setProfilesById(mapping)
+    const fromIds = await fetchNicknamesByUserIds(userIds)
+    setProfilesById({ ...mapping, ...fromIds })
   }
 
   useEffect(() => {

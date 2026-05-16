@@ -45,6 +45,10 @@ export function getPostAuthorNickname(post, profilesById, currentUser) {
       "Вы"
     )
   }
-  if (post?.profiles?.nickname) return post.profiles.nickname.trim()
+  const embedded = post?.profiles
+  if (embedded) {
+    const row = Array.isArray(embedded) ? embedded[0] : embedded
+    if (row?.nickname) return String(row.nickname).trim()
+  }
   return "без ника"
 }
