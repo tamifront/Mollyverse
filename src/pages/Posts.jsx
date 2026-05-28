@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { supabase } from "../lib/supabase"
-import { POST_SOURCE_FEED, POST_SOURCE_PROFILE, isVisibleInFeed } from "../utils/postSource"
+import { POST_SOURCE_FEED, isVisibleInFeed } from "../utils/postSource"
 import { getPostAuthorNickname, loadAllNicknamesMap } from "../utils/profiles"
 import { usePostReactions } from "../hooks/usePostReactions"
 
@@ -217,111 +217,60 @@ export default function Posts({ user }) {
   const [text, setText] = useState("")
   const [profilesById, setProfilesById] = useState({})
   const [loadError, setLoadError] = useState("")
+  const [myLikedIds, setMyLikedIds] = useState([])
   const {
-    likedPostIds,
     favoritePostIds,
-    toggleLike,
     toggleFavorite,
-    refreshReactions,
   } = usePostReactions(user)
 
-  // Система лайков как в соцсетях: лайки минимум 0, начальное значение 0, при лайке +1
-  async function handleToggleLike(postId) {
-    if (!user?.id) {
-      alert("Войдите в аккаунт, чтобы ставить лайки")
-      return
-    }
-
-    const isLiked = likedPostIds.includes(String(postId))
-
-    // --- Новый подход: лайк сохраняется в отдельной таблице post_likes, считаем их как aggregate
-
-    // Сначала оптимистично обновляем UI (опционально)
-    setPosts(posts =>
-      posts.map(p => {
-        if (p.id === postId) {
-          let currentLikes = Number(p.likes ?? 0)
-          if (isNaN(currentLikes) || currentLikes < 0) currentLikes = 0
-          let newLikes
-          if (isLiked) {
-            newLikes = Math.max(currentLikes - 1, 0)
-          } else {
-            newLikes = currentLikes + 1
-          }
-          return { ...p, likes: newLikes }
-        }
-        return p
-      })
-    )
-
-    // Теперь пишем/удаляем в таблице post_likes
-    if (isLiked) {
-      // Удаляем лайк
-      const { error } = await supabase
-        .from("post_likes")
-        .delete()
-        .match({ post_id: postId, user_id: user.id })
-      if (error) {
-        alert("Ошибка при удалении лайка: " + error.message)
-      }
-    } else {
-      // Ставим лайк
-      const { error } = await supabase
-        .from("post_likes")
-        .insert({ post_id: postId, user_id: user.id, created_at: new Date().toISOString() })
-      if (error) {
-        alert("Ошибка при добавлении лайка: " + error.message)
-      }
-    }
-
-    // После любого действия загружаем фактическое количество лайков из базы и реакции пользователя
-    await loadPosts()
-    if (refreshReactions) {
-      await refreshReactions()
-    }
-  }
-
-  // Получаем посты + количество лайков из таблицы post_likes (aggregate)
   async function loadPosts() {
-    // Получим все посты, а потом отдельно для них count лайков из post_likes для каждого поста
     const { data: allPosts, error } = await supabase
       .from("posts")
       .select("*")
       .order("created_at", { ascending: false })
-
     if (error) {
-      console.error(error)
       setLoadError(error.message || "Не удалось загрузить посты")
       setPosts([])
       setProfilesById({})
+      setMyLikedIds([])
       return
     }
     setLoadError("")
 
-    // Узнаём id постов
-    const postIds = (allPosts || [])
-      .filter(isVisibleInFeed)
-      .map(p => p.id)
+    // Получаем id всех видимых постов
+    const filtered = (allPosts || []).filter(isVisibleInFeed)
+    const postIds = filtered.map(p => p.id)
 
-    // Запрашиваем аггрегированные лайки для всех постов
+    // Получаем count лайков для каждого поста
     let likesByPostId = {}
     if (postIds.length > 0) {
-      // получаем список лайков для всех постов
-      const { data: likeCounts, error: likesError } = await supabase
+      const { data: likeRows, error: likesErr } = await supabase
         .from("post_likes")
-        .select("post_id, count:id")
+        .select("post_id")
         .in("post_id", postIds)
-        .group("post_id") // агрегируем по post_id
-
-      if (!likesError && Array.isArray(likeCounts)) {
-        for (const like of likeCounts) {
-          likesByPostId[like.post_id] = Number(like.count ?? 0)
+      if (!likesErr && Array.isArray(likeRows)) {
+        for (const { post_id } of likeRows) {
+          likesByPostId[post_id] = (likesByPostId[post_id] || 0) + 1
         }
       }
     }
 
-    // Склеиваем посты с их лайками
-    const sanitizedPosts = (allPosts || []).filter(isVisibleInFeed).map(p => ({
+    // Получаем какие посты лайкнул текущий пользователь
+    let myLiked = []
+    if (user?.id && postIds.length > 0) {
+      const { data: likedRows } = await supabase
+        .from("post_likes")
+        .select("post_id")
+        .eq("user_id", user.id)
+        .in("post_id", postIds)
+      if (Array.isArray(likedRows)) {
+        myLiked = likedRows.map(row => String(row.post_id))
+      }
+    }
+    setMyLikedIds(myLiked)
+
+    // Окончательный массив постов с лайками
+    const sanitizedPosts = filtered.map(p => ({
       ...p,
       likes: Math.max(Number(likesByPostId[p.id] ?? 0), 0),
     }))
@@ -331,7 +280,52 @@ export default function Posts({ user }) {
 
   useEffect(() => {
     loadPosts()
+    // eslint-disable-next-line
   }, [user?.id])
+
+  async function handleToggleLike(postId) {
+    if (!user?.id) {
+      alert("Войдите в аккаунт, чтобы ставить лайки")
+      return
+    }
+    const postIdStr = String(postId)
+    const isLiked = myLikedIds.includes(postIdStr)
+    // Оптимистичное обновление UI
+    setMyLikedIds(ids =>
+      isLiked ? ids.filter(id => id !== postIdStr) : [...ids, postIdStr]
+    )
+    setPosts(posts =>
+      posts.map(p => {
+        if (String(p.id) === postIdStr) {
+          let likes = Number(p.likes ?? 0)
+          if (isLiked) {
+            likes = Math.max(likes - 1, 0)
+          } else {
+            likes = likes + 1
+          }
+          return { ...p, likes }
+        }
+        return p
+      })
+    )
+
+    // Обновляем в базе
+    if (isLiked) {
+      // Убрать лайк
+      const { error } = await supabase
+        .from("post_likes")
+        .delete()
+        .match({ post_id: postId, user_id: user.id })
+      // Не трогаем UI дальше
+    } else {
+      // Поставить лайк
+      const { error } = await supabase
+        .from("post_likes")
+        .insert({ post_id: postId, user_id: user.id, created_at: new Date().toISOString() })
+      // Не трогаем UI дальше
+    }
+    // Не перегружаем всё - посты не подтягиваются снова, UI реагирует мгновенно как в соц сетях
+  }
 
   async function createPost() {
     if (!user?.id) {
@@ -346,7 +340,6 @@ export default function Posts({ user }) {
       content: text.trim(),
       user_id: user.id,
       post_source: POST_SOURCE_FEED,
-      // лайки по умолчанию 0 в бд, но они считаются по post_likes теперь
       likes: 0,
       created_at: new Date().toISOString(),
     }
@@ -413,6 +406,7 @@ export default function Posts({ user }) {
         ) : null}
         {posts.map((p) => {
           const authorNick = getPostAuthorNickname(p, profilesById, user)
+          const liked = myLikedIds.includes(String(p.id))
           return (
             <div key={p.id} style={cardTheme.card}>
               <div style={cardTheme.avatar}>
@@ -421,7 +415,6 @@ export default function Posts({ user }) {
               <div style={cardTheme.main}>
                 <div style={cardTheme.cardHeader}>
                   <span style={cardTheme.author}>{authorNick}</span>
-                  {/* Добавим форматированную дату публикации поста */}
                   <span style={cardTheme.date} title={p.created_at}>
                     {formatKZDateAlmaty(p.created_at)}
                   </span>
@@ -435,12 +428,12 @@ export default function Posts({ user }) {
                     onClick={() => handleToggleLike(p.id)}
                     style={{
                       ...cardTheme.iconAction,
-                      ...(likedPostIds.includes(String(p.id)) ? cardTheme.iconActionLiked : null)
+                      ...(liked ? cardTheme.iconActionLiked : null)
                     }}
-                    title={likedPostIds.includes(String(p.id)) ? "Убрать лайк" : "Поставить лайк"}
+                    title={liked ? "Убрать лайк" : "Поставить лайк"}
                   >
                     <span style={{ fontSize: 21, marginRight: 3 }}>
-                      {likedPostIds.includes(String(p.id)) ? "❤️" : "🤍"}
+                      {liked ? "❤️" : "🤍"}
                     </span>
                     <span style={{
                       fontWeight: 700, fontSize: 15,
