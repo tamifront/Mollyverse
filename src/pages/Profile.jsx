@@ -5,6 +5,126 @@ import { POST_SOURCE_PROFILE } from "../utils/postSource"
 import { loadAllNicknamesMap } from "../utils/profiles"
 import { usePostReactions } from "../hooks/usePostReactions"
 
+// Вынесем оформление отдельного поста как в Posts.jsx (адаптировано)
+function PostCard({
+  post,
+  author,
+  user,
+  liked,
+  favorited,
+  onLike,
+  onFavorite,
+  onDelete,
+  canDelete
+}) {
+  return (
+    <div
+      style={{
+        background: "#191b20",
+        borderRadius: 18,
+        boxShadow: "0 2px 14px 0 rgba(0,0,0,.14)",
+        margin: "18px auto",
+        padding: "19px 20px 13px 20px",
+        border: "1.5px solid #22242a",
+        maxWidth: 540,
+        position: "relative",
+        color: "#fff"
+      }}
+    >
+      <div style={{
+        display: "flex",
+        alignItems: "center",
+        marginBottom: 4,
+        fontSize: 17,
+        fontWeight: 700,
+        letterSpacing: 0.15
+      }}>
+        <span style={{color:"#b1d4fc"}}>
+          {author?.nickname || (post.user_id === user.id ? "Вы" : "без ника")}
+        </span>
+        <span style={{
+          fontWeight: 400,
+          color: "#8a97ac",
+          fontSize: 14,
+          marginLeft: 11
+        }}>
+          {formatKZDate(post.created_at)}
+        </span>
+        {post.edited && (
+          <span style={{color:"#fbdb7e", marginLeft: 12, fontSize:13}} title="Пост был отредактирован"> (изменён)</span>
+        )}
+      </div>
+      <div style={{
+        fontSize: 19,
+        fontWeight: 400,
+        marginBottom: 13,
+        lineHeight: 1.42,
+        wordBreak: "break-word"
+      }}>
+        {post.content}
+      </div>
+      <div style={{
+        display: "flex",
+        gap: 10,
+        alignItems: "center",
+        marginTop: 3
+      }}>
+        <button
+          onClick={() => onLike(post.id)}
+          style={{
+            background:"none",
+            border:"none",
+            color: liked ? "#ff5277" : "#e1e1e1",
+            fontWeight:700,
+            fontSize:19,
+            display:"flex",
+            alignItems:"center",
+            cursor: "pointer",
+            padding: "2px 7px 2px 0"
+          }}
+          title={liked ? "Убрать лайк" : "Поставить лайк"}
+        >
+          <span style={{fontSize:22, marginRight:3}}>❤️</span>{liked ? "Уже нравится" : "Лайк"}
+        </button>
+        <button
+          onClick={() => onFavorite(post.id)}
+          style={{
+            background:"none",
+            border:"none",
+            color: favorited ? "#ffd36b" : "#e7e7c7",
+            fontWeight:700,
+            fontSize:19,
+            display:"flex",
+            alignItems:"center",
+            cursor:"pointer",
+            padding: "2px 7px 2px 0"
+          }}
+          title={favorited ? "Убрать из избранного" : "В избранное"}
+        >
+          <span style={{fontSize:22, marginRight:3}}>⭐</span>{favorited ? "В избранном" : "В избранное"}
+        </button>
+        {canDelete && (
+          <button
+            onClick={() => onDelete(post.id)}
+            style={{
+              marginLeft: "auto",
+              background: "none",
+              border: "none",
+              color: "#ff6464",
+              fontWeight: 800,
+              cursor: "pointer",
+              fontSize: 18,
+              letterSpacing: ".05em"
+            }}
+          >
+            🗑️ удалить
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function Profile({ user, profileUserId }) {
   // Исправим отображение постов — показываем только посты принадлежащие эффективному пользователю
   const effectiveProfileUserId = profileUserId || user?.id
@@ -213,35 +333,6 @@ export default function Profile({ user, profileUserId }) {
     setPosts(prev => prev.filter(p => p.id !== postId))
     loadPosts()
     refreshReactions()
-  }
-
-  // ==== СТИЛИ =====
-  const cardStyle = {
-    border: "1px solid #282828",
-    borderRadius: 12,
-    boxShadow: "0 2px 14px 0 rgba(0,0,0,0.15)",
-    background: "#191b20",
-    margin: "18px auto",
-    padding: "18px 20px 8px 20px",
-    maxWidth: 540,
-    color: "#e9e9f9",
-    position: "relative"
-  }
-
-  const cardHeaderStyle = {
-    fontWeight: 600,
-    color: "#aac6f6",
-    fontSize: 16,
-    marginBottom: 8
-  }
-
-  const cardActionsStyle = {
-    display: "flex",
-    flexWrap: "wrap",
-    gap: 18,
-    alignItems: "center",
-    marginTop: 6,
-    fontSize: 17
   }
 
   // ===== RENDER =====
@@ -505,74 +596,25 @@ export default function Profile({ user, profileUserId }) {
           )}
         </div>
       )}
+
       {/* Показываем только посты effectiveProfileUserId */}
       <div>
         {posts.map(p => {
           const author = postAuthors[p.user_id]
+          const canDel = (p.user_id === user.id && (!profileUserId || profileUserId === user.id))
           return (
-            <div key={p.id} style={cardStyle}>
-              <div style={cardHeaderStyle}>
-                <span style={{fontSize:18, fontWeight:700}}>
-                  {author?.nickname || (p.user_id === user.id ? "Вы" : "без ника")}
-                </span>
-                <span style={{fontWeight:300, color:"#888", fontSize:14, marginLeft:10}}>
-                  {formatKZDate(p.created_at)}
-                </span>
-              </div>
-              <div style={{fontSize: 18, lineHeight: 1.45, marginBottom: 8, wordBreak: "break-word"}}>
-                {p.content}
-              </div>
-              <div style={cardActionsStyle}>
-                <button
-                  onClick={() => handleLike(p.id)}
-                  style={{
-                    background:"none",
-                    border:"none",
-                    color: likedPostIds.includes(String(p.id)) ? "#ff5277" : "#c7c7c7",
-                    fontSize:18,
-                    display:"flex",
-                    alignItems:"center",
-                    cursor: "pointer"
-                  }}
-                  title={likedPostIds.includes(String(p.id)) ? "Убрать лайк" : "Поставить лайк"}
-                >
-                  <span style={{fontSize:21, marginRight:4}}>❤️</span>
-                  {likedPostIds.includes(String(p.id)) ? "Уже нравится" : "Лайк"}
-                </button>
-                <button
-                  onClick={() => handleFavorite(p.id)}
-                  style={{
-                    background:"none",
-                    border:"none",
-                    color: favoritePostIds.includes(String(p.id)) ? "#ffd36b" : "#c7c7c7",
-                    fontSize:18,
-                    display:"flex",
-                    alignItems:"center",
-                    cursor: "pointer"
-                  }}
-                  title={favoritePostIds.includes(String(p.id)) ? "Убрать из избранного" : "В избранное"}
-                >
-                  <span style={{fontSize:21, marginRight:4}}>⭐</span>
-                  {favoritePostIds.includes(String(p.id)) ? "В избранном" : "В избранное"}
-                </button>
-                {(p.user_id === user.id && (!profileUserId || profileUserId === user.id)) && (
-                  <button
-                    onClick={() => handleDeletePost(p.id)}
-                    style={{
-                      marginLeft: "auto",
-                      background: "none",
-                      border: "none",
-                      color: "#ff6464",
-                      fontWeight: 700,
-                      cursor: "pointer",
-                      fontSize: 17
-                    }}
-                  >
-                    🗑️ удалить
-                  </button>
-                )}
-              </div>
-            </div>
+            <PostCard
+              key={p.id}
+              post={p}
+              author={author}
+              user={user}
+              liked={likedPostIds.includes(String(p.id))}
+              favorited={favoritePostIds.includes(String(p.id))}
+              onLike={handleLike}
+              onFavorite={handleFavorite}
+              onDelete={handleDeletePost}
+              canDelete={canDel}
+            />
           )
         })}
       </div>
@@ -587,19 +629,18 @@ export default function Profile({ user, profileUserId }) {
           {likedPosts.map(p => {
             const author = postAuthors[p.user_id]
             return (
-              <div key={p.id} style={cardStyle}>
-                <div style={cardHeaderStyle}>
-                  <span style={{fontWeight:900, color:"#faa"}}>
-                    {author?.nickname ? `Понравился пост @${author.nickname}` : "Понравился пост"}
-                  </span>
-                  <span style={{fontWeight:300, color:"#888", fontSize:14, marginLeft:10}}>
-                    {formatKZDate(p.created_at)}
-                  </span>
-                </div>
-                <div style={{fontSize:17, lineHeight:1.42, marginBottom:2}}>
-                  {p.content}
-                </div>
-              </div>
+              <PostCard
+                key={p.id}
+                post={p}
+                author={author}
+                user={user}
+                liked={true}
+                favorited={favoritePostIds.includes(String(p.id))}
+                onLike={handleLike}
+                onFavorite={handleFavorite}
+                onDelete={() => {}}
+                canDelete={false}
+              />
             )
           })}
         </>
@@ -615,19 +656,18 @@ export default function Profile({ user, profileUserId }) {
           {favoritePosts.map(p => {
             const author = postAuthors[p.user_id]
             return (
-              <div key={p.id} style={cardStyle}>
-                <div style={cardHeaderStyle}>
-                  <span style={{fontWeight:900, color:"#ffdb59"}}>
-                    {author?.nickname ? `В избранном @${author.nickname}` : "В избранном"}
-                  </span>
-                  <span style={{fontWeight:300, color:"#888", fontSize:14, marginLeft:10}}>
-                    {formatKZDate(p.created_at)}
-                  </span>
-                </div>
-                <div style={{fontSize:17, lineHeight:1.45, marginBottom:2}}>
-                  {p.content}
-                </div>
-              </div>
+              <PostCard
+                key={p.id}
+                post={p}
+                author={author}
+                user={user}
+                liked={likedPostIds.includes(String(p.id))}
+                favorited={true}
+                onLike={handleLike}
+                onFavorite={handleFavorite}
+                onDelete={() => {}}
+                canDelete={false}
+              />
             )
           })}
         </>
