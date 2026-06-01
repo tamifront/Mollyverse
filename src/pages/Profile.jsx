@@ -1,12 +1,14 @@
-import { useEffect, useState, useCallback } from "react"
+import { useEffect, useState, useCallback, useMemo } from "react"
 import { supabase } from "../lib/supabase"
 import { POST_SOURCE_PROFILE } from "../utils/postSource"
 import { loadAllNicknamesMap } from "../utils/profiles"
 import { usePostReactions } from "../hooks/usePostReactions"
 import { formatKZDateAlmaty } from "../utils/datetime"
 import { loadLikesMapForPosts, getFavoriteCountsForPosts } from "../utils/postLikes"
+import { getCommentCountsForPosts } from "../utils/postComments"
 import LikeButton from "../components/LikeButton"
 import FavoriteButton from "../components/FavoriteButton"
+import PostComments from "../components/PostComments"
 import "../styles/Profile.css"
 
 function getAvatarLetter(name) {
@@ -40,7 +42,22 @@ function LikedUsersPopup({ open, onClose, users }) {
 }
 
 // ── PostCard теперь со всплывающим списком пользователей, поставивших лайк ──
-function PostCard({ post, authorNick, user, liked, favorited, favoriteCount, onLike, onFavorite, onDelete, canDelete, likeUsers }) {
+function PostCard({
+  post,
+  authorNick,
+  user,
+  liked,
+  favorited,
+  favoriteCount,
+  onLike,
+  onFavorite,
+  onDelete,
+  canDelete,
+  likeUsers,
+  profilesById,
+  commentCount,
+  onCommentCountChange,
+}) {
   const [popupOpen, setPopupOpen] = useState(false)
 
   const handleLikesCountClick = (e) => {
@@ -88,6 +105,13 @@ function PostCard({ post, authorNick, user, liked, favorited, favoriteCount, onL
             </button>
           )}
         </div>
+        <PostComments
+          postId={post.id}
+          user={user}
+          profilesById={profilesById}
+          initialCount={commentCount ?? 0}
+          onCountChange={onCommentCountChange}
+        />
       </div>
     </article>
   )
@@ -113,6 +137,7 @@ export default function Profile({ user, profileUserId }) {
   const [activeSocialList, setActiveSocialList] = useState("")
   const [likesMap, setLikesMap] = useState({})
   const [favoriteCountsMap, setFavoriteCountsMap] = useState({})
+  const [commentCountsMap, setCommentCountsMap] = useState({})
 
   const {
     likedPostIds,
@@ -129,15 +154,27 @@ export default function Profile({ user, profileUserId }) {
     if (!postList?.length) {
       setLikesMap({})
       setFavoriteCountsMap({})
+      setCommentCountsMap({})
       return
     }
-    const [likes, favCounts] = await Promise.all([
+    const postIds = postList.map((p) => p.id)
+    const [likes, favCounts, commentCounts] = await Promise.all([
       loadLikesMapForPosts(postList),
-      getFavoriteCountsForPosts(postList.map((p) => p.id)),
+      getFavoriteCountsForPosts(postIds),
+      getCommentCountsForPosts(postIds),
     ])
     setLikesMap(likes)
     setFavoriteCountsMap(favCounts)
+    setCommentCountsMap(commentCounts)
   }, [])
+
+  const profilesById = useMemo(() => {
+    const map = {}
+    for (const [id, p] of Object.entries(postAuthors)) {
+      map[id] = p?.nickname || "без ника"
+    }
+    return map
+  }, [postAuthors])
 
   // ── загрузка профиля ───────────────────────────────────────────────────────
   const loadProfile = useCallback(async () => {
@@ -422,6 +459,11 @@ export default function Profile({ user, profileUserId }) {
               canDelete={canDel}
               likeUsers={likesMap[p.id] || []}
               favoriteCount={favoriteCountsMap[p.id] ?? 0}
+              profilesById={profilesById}
+              commentCount={commentCountsMap[p.id] ?? 0}
+              onCommentCountChange={(n) =>
+                setCommentCountsMap((prev) => ({ ...prev, [p.id]: n }))
+              }
             />
           )
         })}

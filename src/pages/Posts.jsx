@@ -5,8 +5,10 @@ import { getPostAuthorNickname, loadAllNicknamesMap } from "../utils/profiles"
 import { usePostReactions } from "../hooks/usePostReactions"
 import { formatKZDateAlmaty } from "../utils/datetime"
 import { getLikeCountsForPosts, getFavoriteCountsForPosts } from "../utils/postLikes"
+import { getCommentCountsForPosts } from "../utils/postComments"
 import LikeButton from "../components/LikeButton"
 import FavoriteButton from "../components/FavoriteButton"
+import PostComments from "../components/PostComments"
 import "../styles/Posts.css"
 
 function getAvatarLetter(name) {
@@ -20,6 +22,7 @@ export default function Posts({ user }) {
   const [profilesById, setProfilesById] = useState({})
   const [loadError, setLoadError] = useState("")
   const [pendingLikes, setPendingLikes] = useState(() => new Set())
+  const [commentCounts, setCommentCounts] = useState({})
 
   const {
     likedPostIds,
@@ -67,9 +70,10 @@ export default function Posts({ user }) {
 
     const filtered = (allPosts || []).filter(isVisibleInFeed)
     const postIds = filtered.map((p) => p.id)
-    const [likesByPostId, favsByPostId] = await Promise.all([
+    const [likesByPostId, favsByPostId, commentsByPostId] = await Promise.all([
       getLikeCountsForPosts(postIds),
       getFavoriteCountsForPosts(postIds),
+      getCommentCountsForPosts(postIds),
     ])
 
     const sanitizedPosts = filtered.map((p) => ({
@@ -78,6 +82,7 @@ export default function Posts({ user }) {
       favorites: Math.max(Number(favsByPostId[p.id] ?? 0), 0),
     }))
     setPosts(sanitizedPosts)
+    setCommentCounts(commentsByPostId)
     setProfilesById(await loadAllNicknamesMap(user))
   }
 
@@ -230,6 +235,15 @@ export default function Posts({ user }) {
                     onClick={() => handleToggleFavorite(p.id)}
                   />
                 </div>
+                <PostComments
+                  postId={p.id}
+                  user={user}
+                  profilesById={profilesById}
+                  initialCount={commentCounts[p.id] ?? 0}
+                  onCountChange={(n) =>
+                    setCommentCounts((prev) => ({ ...prev, [p.id]: n }))
+                  }
+                />
               </div>
             </article>
           )

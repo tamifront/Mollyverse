@@ -5,8 +5,10 @@ import { getPostAuthorNickname, loadAllNicknamesMap } from "../utils/profiles"
 import { formatKZDate } from "../utils/datetime"
 import { usePostReactions } from "../hooks/usePostReactions"
 import { getLikeCountsForPosts, getFavoriteCountsForPosts } from "../utils/postLikes"
+import { getCommentCountsForPosts } from "../utils/postComments"
 import LikeButton from "../components/LikeButton"
 import FavoriteButton from "../components/FavoriteButton"
+import PostComments from "../components/PostComments"
 import "../styles/SearchPosts.css"
 
 export default function SearchPosts({ user }) {
@@ -19,6 +21,7 @@ export default function SearchPosts({ user }) {
   const [friendIds, setFriendIds] = useState([])
   const [actionLoadingId, setActionLoadingId] = useState("")
   const [pendingLikes, setPendingLikes] = useState(() => new Set())
+  const [commentCounts, setCommentCounts] = useState({})
 
   const {
     likedPostIds,
@@ -65,9 +68,10 @@ export default function SearchPosts({ user }) {
           setPosts([])
         } else {
           const postIds = (postsData || []).map((p) => p.id)
-          const [likesByPostId, favsByPostId] = await Promise.all([
+          const [likesByPostId, favsByPostId, commentsByPostId] = await Promise.all([
             getLikeCountsForPosts(postIds),
             getFavoriteCountsForPosts(postIds),
+            getCommentCountsForPosts(postIds),
           ])
           setPosts(
             (postsData || []).map((p) => ({
@@ -76,6 +80,7 @@ export default function SearchPosts({ user }) {
               favorites: Math.max(Number(favsByPostId[p.id] ?? 0), 0),
             }))
           )
+          setCommentCounts(commentsByPostId)
         }
 
         const { data: profilesData, error: profilesError } = await supabase
@@ -344,6 +349,15 @@ export default function SearchPosts({ user }) {
                   onClick={() => handleToggleFavorite(post.id)}
                 />
               </div>
+              <PostComments
+                postId={post.id}
+                user={user}
+                profilesById={profilesById}
+                initialCount={commentCounts[post.id] ?? 0}
+                onCountChange={(n) =>
+                  setCommentCounts((prev) => ({ ...prev, [post.id]: n }))
+                }
+              />
             </article>
             )
           })}
