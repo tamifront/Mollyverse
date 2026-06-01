@@ -1,19 +1,15 @@
 import { useCallback, useEffect, useState } from "react"
 import { formatKZDateAlmaty } from "../utils/datetime"
-import { getPostAuthorNickname } from "../utils/profiles"
+import { getPostAuthorNickname, getProfileFromMap } from "../utils/profiles"
+import UserAvatar from "./UserAvatar"
 import {
   addPostComment,
   deletePostComment,
   isCommentsTableMissing,
   loadCommentsForPost,
 } from "../utils/postComments"
-import { fetchNicknamesByUserIds } from "../utils/profiles"
+import { fetchProfilesByUserIds } from "../utils/profiles"
 import "./PostComments.css"
-
-function getAvatarLetter(name) {
-  if (!name) return "U"
-  return String(name).trim()[0]?.toUpperCase() || "U"
-}
 
 /**
  * Сворачиваемая секция комментариев под постом (как в Telegram).
@@ -59,7 +55,7 @@ export default function PostComments({
       const missing = ids.filter((id) => !profilesById[id])
       if (!missing.length) return
 
-      const fetched = await fetchNicknamesByUserIds(missing)
+      const fetched = await fetchProfilesByUserIds(missing)
       if (Object.keys(fetched).length) {
         setNicknames((prev) => ({ ...prev, ...fetched }))
       }
@@ -94,13 +90,16 @@ export default function PostComments({
     }
   }, [open, loaded, loading, loadComments])
 
-  const getNickname = (uid) => {
-    if (uid && profilesById[uid]) return profilesById[uid]
-    if (uid && nicknames[uid]) return nicknames[uid]
+  const getAuthorProfile = (uid) => {
+    if (uid && profilesById[uid]) return getProfileFromMap(profilesById, uid)
+    if (uid && nicknames[uid]) return getProfileFromMap(nicknames, uid)
     if (uid && user?.id === uid) {
-      return getPostAuthorNickname({ user_id: uid }, profilesById, user)
+      return {
+        nickname: getPostAuthorNickname({ user_id: uid }, profilesById, user),
+        avatar_url: "",
+      }
     }
-    return "без ника"
+    return { nickname: "без ника", avatar_url: "" }
   }
 
   const handleToggle = () => {
@@ -135,7 +134,7 @@ export default function PostComments({
       updateCount((c) => c + 1)
       setNicknames((prev) => ({
         ...prev,
-        [user.id]: getNickname(user.id),
+        [user.id]: getAuthorProfile(user.id),
       }))
       if (!open) setOpen(true)
     }
@@ -183,14 +182,19 @@ export default function PostComments({
           ) : (
             <ul className="post-comments-list">
               {comments.map((c) => {
-                const nick = getNickname(c.user_id)
+                const author = getAuthorProfile(c.user_id)
                 const isOwn = user?.id === c.user_id
                 return (
                   <li key={c.id} className="post-comment">
-                    <span className="post-comment-avatar">{getAvatarLetter(nick)}</span>
+                    <UserAvatar
+                      className="post-comment-avatar"
+                      nickname={author.nickname}
+                      avatarUrl={author.avatar_url}
+                      size="sm"
+                    />
                     <div className="post-comment-body">
                       <div className="post-comment-meta">
-                        <span className="post-comment-author">{nick}</span>
+                        <span className="post-comment-author">{author.nickname}</span>
                         <time className="post-comment-date" dateTime={c.created_at}>
                           {formatKZDateAlmaty(c.created_at)}
                         </time>

@@ -40,7 +40,7 @@ export async function loadLikesMapForPosts(postList) {
   if (userIds.length) {
     const { data: profiles } = await supabase
       .from("profiles")
-      .select("id, nickname")
+      .select("id, nickname, avatar_url")
       .in("id", userIds)
     for (const p of profiles || []) {
       profileById[p.id] = p
@@ -54,6 +54,7 @@ export async function loadLikesMapForPosts(postList) {
     map[row.post_id].push({
       id: row.user_id,
       nickname: prof?.nickname || "без ника",
+      avatar_url: prof?.avatar_url?.trim() || "",
     })
   }
   return map

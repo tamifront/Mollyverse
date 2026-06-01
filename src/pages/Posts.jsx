@@ -1,7 +1,12 @@
 import { useEffect, useState, useCallback } from "react"
 import { supabase } from "../lib/supabase"
 import { POST_SOURCE_FEED, isVisibleInFeed } from "../utils/postSource"
-import { getPostAuthorNickname, loadAllNicknamesMap } from "../utils/profiles"
+import {
+  getPostAuthorAvatar,
+  getPostAuthorNickname,
+  loadAllProfilesMap,
+} from "../utils/profiles"
+import UserAvatar from "../components/UserAvatar"
 import { usePostReactions } from "../hooks/usePostReactions"
 import { formatKZDateAlmaty } from "../utils/datetime"
 import { getLikeCountsForPosts, getFavoriteCountsForPosts } from "../utils/postLikes"
@@ -10,11 +15,6 @@ import LikeButton from "../components/LikeButton"
 import FavoriteButton from "../components/FavoriteButton"
 import PostComments from "../components/PostComments"
 import "../styles/Posts.css"
-
-function getAvatarLetter(name) {
-  if (!name) return "U"
-  return String(name).trim()[0]?.toUpperCase() || "U"
-}
 
 export default function Posts({ user }) {
   const [posts, setPosts] = useState([])
@@ -83,7 +83,7 @@ export default function Posts({ user }) {
     }))
     setPosts(sanitizedPosts)
     setCommentCounts(commentsByPostId)
-    setProfilesById(await loadAllNicknamesMap(user))
+    setProfilesById(await loadAllProfilesMap(user))
   }
 
   useEffect(() => {
@@ -200,6 +200,7 @@ export default function Posts({ user }) {
 
         {posts.map((p) => {
           const authorNick = getPostAuthorNickname(p, profilesById, user)
+          const authorAvatar = getPostAuthorAvatar(p, profilesById, user)
           const postIdStr = String(p.id)
           const liked = likedPostIds.includes(postIdStr)
           const faved = favoritePostIds.includes(postIdStr)
@@ -209,7 +210,12 @@ export default function Posts({ user }) {
 
           return (
             <article key={p.id} className="post-card">
-              <div className="post-avatar">{getAvatarLetter(authorNick)}</div>
+              <UserAvatar
+                className="post-avatar"
+                nickname={authorNick}
+                avatarUrl={authorAvatar}
+                size="md"
+              />
               <div className="post-body">
                 <div className="post-meta">
                   <span className="post-author">{authorNick}</span>

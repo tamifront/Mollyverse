@@ -40,6 +40,18 @@
   color: var(--mv-text-muted);
 }
 
+.search-result-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.search-result-head .search-result-meta {
+  flex: 1;
+  min-width: 0;
+}
+
 .search-user-row {
   display: flex;
   align-items: center;

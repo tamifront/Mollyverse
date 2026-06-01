@@ -1,7 +1,13 @@
 import { useEffect, useState, useCallback, useMemo } from "react"
 import { supabase } from "../lib/supabase"
 import { POST_SOURCE_PROFILE } from "../utils/postSource"
-import { loadAllNicknamesMap } from "../utils/profiles"
+import {
+  getProfileFromMap,
+  loadAllProfilesMap,
+  normalizeProfileEntry,
+} from "../utils/profiles"
+import { uploadProfileAvatar, removeProfileAvatar } from "../utils/avatars"
+import UserAvatar from "../components/UserAvatar"
 import { usePostReactions } from "../hooks/usePostReactions"
 import { formatKZDateAlmaty } from "../utils/datetime"
 import { loadLikesMapForPosts, getFavoriteCountsForPosts } from "../utils/postLikes"
@@ -10,11 +16,6 @@ import LikeButton from "../components/LikeButton"
 import FavoriteButton from "../components/FavoriteButton"
 import PostComments from "../components/PostComments"
 import "../styles/Profile.css"
-
-function getAvatarLetter(name) {
-  if (!name) return "U"
-  return String(name).trim()[0]?.toUpperCase() || "U"
-}
 
 // New helper to show a popup with users who liked the post
 function LikedUsersPopup({ open, onClose, users }) {
@@ -28,7 +29,12 @@ function LikedUsersPopup({ open, onClose, users }) {
         ) : (
           users.map((u) => (
             <div key={u.id} className="mv-modal-user">
-              <span className="mv-modal-user-avatar">{getAvatarLetter(u.nickname)}</span>
+              <UserAvatar
+                className="mv-modal-user-avatar"
+                nickname={u.nickname}
+                avatarUrl={u.avatar_url}
+                size="sm"
+              />
               <span>{u.nickname || "Без ника"}</span>
             </div>
           ))
@@ -45,6 +51,7 @@ function LikedUsersPopup({ open, onClose, users }) {
 function PostCard({
   post,
   authorNick,
+  authorAvatar,
   user,
   liked,
   favorited,
@@ -67,7 +74,12 @@ function PostCard({
 
   return (
     <article className="post-card">
-      <div className="post-avatar">{getAvatarLetter(authorNick)}</div>
+      <UserAvatar
+        className="post-avatar"
+        nickname={authorNick}
+        avatarUrl={authorAvatar}
+        size="md"
+      />
       <div className="post-body">
         <div className="post-meta">
           <span className="post-author">{authorNick}</span>
@@ -138,6 +150,7 @@ export default function Profile({ user, profileUserId }) {
   const [likesMap, setLikesMap] = useState({})
   const [favoriteCountsMap, setFavoriteCountsMap] = useState({})
   const [commentCountsMap, setCommentCountsMap] = useState({})
+  const [avatarUploading, setAvatarUploading] = useState(false)
 
   const {
     likedPostIds,
@@ -171,10 +184,52 @@ export default function Profile({ user, profileUserId }) {
   const profilesById = useMemo(() => {
     const map = {}
     for (const [id, p] of Object.entries(postAuthors)) {
-      map[id] = p?.nickname || "без ника"
+      map[id] = normalizeProfileEntry(p)
     }
     return map
   }, [postAuthors])
+
+  const handleAvatarUpload = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file || !user?.id) return
+    setAvatarUploading(true)
+    const { url, error } = await uploadProfileAvatar(user.id, file)
+    setAvatarUploading(false)
+    if (error) {
+      alert(error.message || "Не удалось загрузить аватар")
+      return
+    }
+    setProfile((prev) => (prev ? { ...prev, avatar_url: url } : prev))
+    setPostAuthors((prev) => ({
+      ...prev,
+      [user.id]: {
+        ...(prev[user.id] || { id: user.id }),
+        nickname: prev[user.id]?.nickname || nickname || "без ника",
+        avatar_url: url,
+      },
+    }))
+    e.target.value = ""
+  }
+
+  const handleAvatarRemove = async () => {
+    if (!user?.id) return
+    setAvatarUploading(true)
+    const { error } = await removeProfileAvatar(user.id)
+    setAvatarUploading(false)
+    if (error) {
+      alert(error.message || "Не удалось удалить аватар")
+      return
+    }
+    setProfile((prev) => (prev ? { ...prev, avatar_url: "" } : prev))
+    setPostAuthors((prev) => ({
+      ...prev,
+      [user.id]: {
+        ...(prev[user.id] || { id: user.id }),
+        nickname: prev[user.id]?.nickname || nickname || "без ника",
+        avatar_url: "",
+      },
+    }))
+  }
 
   // ── загрузка профиля ───────────────────────────────────────────────────────
   const loadProfile = useCallback(async () => {
@@ -209,10 +264,10 @@ export default function Profile({ user, profileUserId }) {
       .order("created_at", { ascending: false })
     if (error) { setPosts([]); setLikesMap({}); return }
     setPosts(data || [])
-    const nickMap = await loadAllNicknamesMap(user)
+    const profilesMap = await loadAllProfilesMap(user)
     const authorsMap = {}
-    for (const [id, nick] of Object.entries(nickMap)) {
-      authorsMap[id] = { id, nickname: nick }
+    for (const [id, prof] of Object.entries(profilesMap)) {
+      authorsMap[id] = { id, nickname: prof.nickname, avatar_url: prof.avatar_url }
     }
     setPostAuthors(authorsMap)
     // After posts loaded, load like info
@@ -221,11 +276,21 @@ export default function Profile({ user, profileUserId }) {
 
   const mapUsersById = useCallback(async (ids = []) => {
     if (!ids.length) return []
-    const { data, error } = await supabase.from("profiles").select("id,nickname").in("id", ids)
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("id,nickname,avatar_url")
+      .in("id", ids)
     if (error) return []
     const byId = {}
-    ;(data || []).forEach((row) => { byId[row.id] = row.nickname || "без ника" })
-    return ids.map((id) => ({ id, nickname: byId[id] || "без ника" }))
+    ;(data || []).forEach((row) => {
+      const prof = normalizeProfileEntry(row)
+      byId[row.id] = prof
+    })
+    return ids.map((id) => ({
+      id,
+      nickname: byId[id]?.nickname || "без ника",
+      avatar_url: byId[id]?.avatar_url || "",
+    }))
   }, [])
 
   const loadSocial = useCallback(async () => {
@@ -303,6 +368,12 @@ export default function Profile({ user, profileUserId }) {
     <div className="profile-page">
 
       <header className="profile-header">
+        <UserAvatar
+          className="profile-header-avatar"
+          nickname={profile?.nickname || "без ника"}
+          avatarUrl={profile?.avatar_url}
+          size="xl"
+        />
         <h1>{profile?.nickname || "без ника"}</h1>
         {profile?.bio && <p className="profile-bio">{profile.bio}</p>}
       </header>
@@ -326,13 +397,47 @@ export default function Profile({ user, profileUserId }) {
             e.preventDefault()
             if (!user?.id || (profileUserId && profileUserId !== user.id)) return
             setProfileLoading(true); setSaveMsg("")
-            const payload = { id: user.id, nickname: nickname.trim() || "без ника", bio: bio.trim() }
+            const payload = {
+              id: user.id,
+              nickname: nickname.trim() || "без ника",
+              bio: bio.trim(),
+              avatar_url: profile?.avatar_url || "",
+            }
             const { data, error } = await supabase.from("profiles").upsert(payload, { onConflict: "id" }).select().single()
             setProfileLoading(false)
             if (error) { setSaveMsg(error?.message || "Ошибка сохранения 😢"); return }
             setProfile(data); setNickname(data.nickname || ""); setBio(data.bio || ""); setSaveMsg("Сохранено!"); setEditing(false)
           }}
         >
+          <div className="profile-avatar-edit">
+            <UserAvatar
+              nickname={nickname || profile?.nickname || "без ника"}
+              avatarUrl={profile?.avatar_url}
+              size="lg"
+            />
+            <div className="profile-avatar-edit-actions">
+              <label className="mv-btn mv-btn--ghost profile-avatar-upload-label">
+                {avatarUploading ? "Загрузка..." : "Сменить фото"}
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  className="profile-avatar-file-input"
+                  disabled={avatarUploading || profileLoading}
+                  onChange={handleAvatarUpload}
+                />
+              </label>
+              {profile?.avatar_url ? (
+                <button
+                  type="button"
+                  className="mv-btn mv-btn--ghost"
+                  disabled={avatarUploading || profileLoading}
+                  onClick={handleAvatarRemove}
+                >
+                  Убрать фото
+                </button>
+              ) : null}
+            </div>
+          </div>
           <label className="mv-label">Ник</label>
           <input
             className="mv-input"
@@ -391,7 +496,12 @@ export default function Profile({ user, profileUserId }) {
           <h3>Подписчики</h3>
           {followers.length === 0
             ? <p className="mv-hint" style={{ padding: 0, textAlign: "left" }}>Подписчиков пока нет.</p>
-            : followers.map((item) => <p key={item.id}>• {item.nickname}</p>)}
+            : followers.map((item) => (
+              <div key={item.id} className="profile-social-user">
+                <UserAvatar nickname={item.nickname} avatarUrl={item.avatar_url} size="sm" />
+                <span>{item.nickname}</span>
+              </div>
+            ))}
         </div>
       )}
       {activeSocialList === "friends" && (
@@ -399,7 +509,12 @@ export default function Profile({ user, profileUserId }) {
           <h3>Друзья</h3>
           {friends.length === 0
             ? <p className="mv-hint" style={{ padding: 0, textAlign: "left" }}>Друзей пока нет.</p>
-            : friends.map((item) => <p key={item.id}>• {item.nickname}</p>)}
+            : friends.map((item) => (
+              <div key={item.id} className="profile-social-user">
+                <UserAvatar nickname={item.nickname} avatarUrl={item.avatar_url} size="sm" />
+                <span>{item.nickname}</span>
+              </div>
+            ))}
         </div>
       )}
       {activeSocialList === "following" && (
@@ -407,7 +522,12 @@ export default function Profile({ user, profileUserId }) {
           <h3>Подписки</h3>
           {following.length === 0
             ? <p className="mv-hint" style={{ padding: 0, textAlign: "left" }}>Подписок пока нет.</p>
-            : following.map((item) => <p key={item.id}>• {item.nickname}</p>)}
+            : following.map((item) => (
+              <div key={item.id} className="profile-social-user">
+                <UserAvatar nickname={item.nickname} avatarUrl={item.avatar_url} size="sm" />
+                <span>{item.nickname}</span>
+              </div>
+            ))}
         </div>
       )}
 
@@ -443,13 +563,18 @@ export default function Profile({ user, profileUserId }) {
           <p className="mv-empty">Постов пока нет.</p>
         )}
         {posts.map((p) => {
-          const authorNick = postAuthors[p.user_id]?.nickname || (p.user_id === user?.id ? "Вы" : "без ника")
+          const authorProf = getProfileFromMap(profilesById, p.user_id)
+          const authorNick =
+            postAuthors[p.user_id]?.nickname ||
+            authorProf.nickname ||
+            (p.user_id === user?.id ? "Вы" : "без ника")
           const canDel = p.user_id === user?.id && isOwnProfile
           return (
             <PostCard
               key={p.id}
               post={p}
               authorNick={authorNick}
+              authorAvatar={authorProf.avatar_url}
               user={user}
               liked={likedPostIds.includes(String(p.id))}
               favorited={favoritePostIds.includes(String(p.id))}
@@ -478,13 +603,15 @@ export default function Profile({ user, profileUserId }) {
               <p className="mv-empty">Нет лайкнутых постов.</p>
             )}
             {likedPosts.map((p) => {
-              const authorNick = postAuthors[p.user_id]?.nickname || "без ника"
+              const authorProf = getProfileFromMap(profilesById, p.user_id)
+              const authorNick = authorProf.nickname
               return (
                 <PostCard
                   key={p.id}
                   post={p}
                   authorNick={authorNick}
-                  user={user}
+                  authorAvatar={authorProf.avatar_url}
+                user={user}
                   liked={true}
                   favorited={favoritePostIds.includes(String(p.id))}
                   onLike={handleLikeWithReload}
@@ -493,6 +620,11 @@ export default function Profile({ user, profileUserId }) {
                   canDelete={false}
                   likeUsers={likesMap[p.id] || []}
                   favoriteCount={favoriteCountsMap[p.id] ?? 0}
+                  profilesById={profilesById}
+                  commentCount={commentCountsMap[p.id] ?? 0}
+                  onCommentCountChange={(n) =>
+                    setCommentCountsMap((prev) => ({ ...prev, [p.id]: n }))
+                  }
                 />
               )
             })}
@@ -509,12 +641,14 @@ export default function Profile({ user, profileUserId }) {
               <p className="mv-empty">Нет избранных постов.</p>
             )}
             {favoritePosts.map((p) => {
-              const authorNick = postAuthors[p.user_id]?.nickname || "без ника"
-              return (
+              const authorProf = getProfileFromMap(profilesById, p.user_id)
+              const authorNick = authorProf.nickname
+          return (
                 <PostCard
                   key={p.id}
                   post={p}
                   authorNick={authorNick}
+                  authorAvatar={authorProf.avatar_url}
                   user={user}
                   liked={likedPostIds.includes(String(p.id))}
                   favorited={true}
@@ -524,6 +658,11 @@ export default function Profile({ user, profileUserId }) {
                   canDelete={false}
                   likeUsers={likesMap[p.id] || []}
                   favoriteCount={favoriteCountsMap[p.id] ?? 0}
+                  profilesById={profilesById}
+                  commentCount={commentCountsMap[p.id] ?? 0}
+                  onCommentCountChange={(n) =>
+                    setCommentCountsMap((prev) => ({ ...prev, [p.id]: n }))
+                  }
                 />
               )
             })}

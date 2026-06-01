@@ -1,7 +1,12 @@
 import { useEffect, useMemo, useState, useCallback } from "react"
 import { supabase } from "../lib/supabase"
 // Заменяем import на форматтер для Казахстана
-import { getPostAuthorNickname, loadAllNicknamesMap } from "../utils/profiles"
+import {
+  getPostAuthorAvatar,
+  getPostAuthorNickname,
+  loadAllProfilesMap,
+} from "../utils/profiles"
+import UserAvatar from "../components/UserAvatar"
 import { formatKZDate } from "../utils/datetime"
 import { usePostReactions } from "../hooks/usePostReactions"
 import { getLikeCountsForPosts, getFavoriteCountsForPosts } from "../utils/postLikes"
@@ -85,14 +90,14 @@ export default function SearchPosts({ user }) {
 
         const { data: profilesData, error: profilesError } = await supabase
           .from("profiles")
-          .select("id,nickname,bio")
+          .select("id,nickname,bio,avatar_url")
 
         if (profilesError) {
           console.error("Профили:", profilesError)
         }
 
         setUsers(profilesData || [])
-        setProfilesById(await loadAllNicknamesMap(user))
+        setProfilesById(await loadAllProfilesMap(user))
       } catch (e) {
         console.error(e)
         setPosts([])
@@ -279,6 +284,11 @@ export default function SearchPosts({ user }) {
           <h2>Пользователи</h2>
           {filteredUsers.map((profile) => (
             <div key={profile.id} className="search-user-row">
+              <UserAvatar
+                nickname={profile.nickname || "без ника"}
+                avatarUrl={profile.avatar_url}
+                size="md"
+              />
               <div>
                 <div className="search-user-name">{profile.nickname || "без ника"}</div>
                 {profile.bio ? <div className="search-user-bio">{profile.bio}</div> : null}
@@ -322,14 +332,17 @@ export default function SearchPosts({ user }) {
             const liked = likedPostIds.includes(postIdStr)
             const faved = favoritePostIds.includes(postIdStr)
             const likePending = pendingLikes.has(postIdStr)
+            const authorNick = getPostAuthorNickname(post, profilesById, user)
+            const authorAvatar = getPostAuthorAvatar(post, profilesById, user)
 
             return (
             <article key={post.id} className="mv-panel search-result-card">
+              <div className="search-result-head">
+                <UserAvatar nickname={authorNick} avatarUrl={authorAvatar} size="md" />
               <div className="search-result-meta">
-                <span className="search-result-author">
-                  {getPostAuthorNickname(post, profilesById, user)}
-                </span>
+                <span className="search-result-author">{authorNick}</span>
                 <time className="search-result-date">{formatKZDate(post.created_at)}</time>
+              </div>
               </div>
               <p className="search-result-text">{post.content}</p>
               <div className="post-actions search-result-actions">

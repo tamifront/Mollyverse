@@ -174,17 +174,6 @@
 
 .post-avatar {
   flex-shrink: 0;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
-  font-size: 0.95rem;
-  color: var(--mv-text);
-  background: var(--mv-bg-elevated);
-  border: 1px solid var(--mv-border);
 }
 
 .post-body {
