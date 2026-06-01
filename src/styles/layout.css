@@ -1,0 +1,32 @@
+.layout {
+  display: block;
+  min-height: 100vh;
+  background: var(--mv-bg);
+  color: var(--mv-text);
+}
+
+.page {
+  margin-left: var(--mv-sidebar-width);
+  width: calc(100% - var(--mv-sidebar-width));
+  max-width: calc(100% - var(--mv-sidebar-width));
+  min-height: 100vh;
+  padding: 24px 28px 40px;
+  box-sizing: border-box;
+}
+
+@media (max-width: 900px) {
+  .page {
+    margin-left: 0;
+    width: 100%;
+    max-width: 100%;
+    padding: 16px;
+    padding-top: 64px;
+  }
+}
+
+@media (max-width: 560px) {
+  .page {
+    padding: 12px;
+    padding-top: 60px;
+  }
+}

@@ -85,6 +85,7 @@ export default function App() {
     
     <div className="layout">
       <Sidebar
+        user={user}
         setPage={setPage}
         updatesUnread={updatesUnread}
         onOpenUpdates={markAllUpdatesRead}

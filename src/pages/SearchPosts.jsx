@@ -1,121 +1,13 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, useCallback } from "react"
 import { supabase } from "../lib/supabase"
 // Заменяем import на форматтер для Казахстана
 import { getPostAuthorNickname, loadAllNicknamesMap } from "../utils/profiles"
-
-// ———— реальное казахстанское время (Алматы/Астана/Актобе и т.д.) ————
-// Функция принудительно отображает время в Казахстане
-function formatKZDate(dateStr) {
-  if (!dateStr) return ""
-  // Force UTC to be parsed, then convert to Kazakhstan TZ (UTC+6)
-  const d = new Date(dateStr)
-  // Date string is often in ISO 8601, interpreted as UTC by Date
-  // Kazakhstan timezone is UTC+6 (Almaty, Astana)
-  const utc =
-    d.getUTCFullYear() +
-    "-" +
-    String(d.getUTCMonth() + 1).padStart(2, "0") +
-    "-" +
-    String(d.getUTCDate()).padStart(2, "0") +
-    "T" +
-    String(d.getUTCHours()).padStart(2, "0") +
-    ":" +
-    String(d.getUTCMinutes()).padStart(2, "0") +
-    ":" +
-    String(d.getUTCSeconds()).padStart(2, "0") +
-    "Z"
-  // Build a Date object for UTC, add +6 offset
-  const dt = new Date(utc)
-  // +6 hours is 6 * 60 * 60 * 1000 = 21600000 ms
-  const msKZ = dt.getTime() + 6 * 60 * 60 * 1000
-  const kz = new Date(msKZ)
-  // prettify
-  const yyyy = kz.getFullYear()
-  const mm = String(kz.getMonth() + 1).padStart(2, "0")
-  const dd = String(kz.getDate()).padStart(2, "0")
-  const hh = String(kz.getHours()).padStart(2, "0")
-  const min = String(kz.getMinutes()).padStart(2, "0")
-  return `${dd}.${mm}.${yyyy} ${hh}:${min}`
-}
-// ———————————————————————————————————————————————————————————————
-
-const styles = {
-  container: {
-    minHeight: "100vh",
-    background: "linear-gradient(135deg, #232946 0%, #1a1a22 100%)",
-    padding: "32px 16px",
-    color: "#fff",
-  },
-  title: {
-    fontWeight: 800,
-    fontSize: 32,
-    margin: "0 0 24px 0",
-    textAlign: "center",
-  },
-  searchWrap: {
-    maxWidth: 640,
-    margin: "0 auto 20px",
-    display: "flex",
-    flexDirection: "column",
-    gap: 10,
-    background: "rgba(34,39,46,0.94)",
-    borderRadius: 12,
-    padding: "16px 18px",
-  },
-  input: {
-    width: "100%",
-    borderRadius: 8,
-    border: "1px solid rgba(255,69,0,0.2)",
-    padding: "12px 13px",
-    fontSize: 16,
-    background: "rgba(0,0,0,0.23)",
-    color: "#fff",
-    outline: "none",
-  },
-  hint: {
-    color: "#cfcfcf",
-    fontSize: 13,
-    margin: 0,
-  },
-  postsContainer: {
-    marginTop: 18,
-    display: "flex",
-    flexDirection: "column",
-    gap: 18,
-    width: "100%",
-    maxWidth: 640,
-    marginLeft: "auto",
-    marginRight: "auto",
-  },
-  card: {
-    background: "rgba(34,39,46,0.98)",
-    borderRadius: 14,
-    border: "1px solid rgba(255,69,0,0.13)",
-    padding: "18px 20px",
-  },
-  header: {
-    display: "flex",
-    gap: 10,
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  nickname: {
-    color: "#aac6f6",
-    fontWeight: 700,
-    fontSize: 16,
-  },
-  date: {
-    color: "#888",
-    fontSize: 13,
-  },
-  content: {
-    color: "#ecebed",
-    fontSize: 17,
-    wordBreak: "break-word",
-    whiteSpace: "pre-line",
-    margin: 0,
-  },
-}
+import { formatKZDate } from "../utils/datetime"
+import { usePostReactions } from "../hooks/usePostReactions"
+import { getLikeCountsForPosts, getFavoriteCountsForPosts } from "../utils/postLikes"
+import LikeButton from "../components/LikeButton"
+import FavoriteButton from "../components/FavoriteButton"
+import "../styles/SearchPosts.css"
 
 export default function SearchPosts({ user }) {
   const [posts, setPosts] = useState([])
@@ -126,6 +18,38 @@ export default function SearchPosts({ user }) {
   const [followingIds, setFollowingIds] = useState([])
   const [friendIds, setFriendIds] = useState([])
   const [actionLoadingId, setActionLoadingId] = useState("")
+  const [pendingLikes, setPendingLikes] = useState(() => new Set())
+
+  const {
+    likedPostIds,
+    favoritePostIds,
+    toggleLike,
+    toggleFavorite,
+  } = usePostReactions(user)
+
+  const syncLikeCount = useCallback(async (postId) => {
+    const counts = await getLikeCountsForPosts([postId])
+    const postIdStr = String(postId)
+    setPosts((prev) =>
+      prev.map((p) =>
+        String(p.id) === postIdStr
+          ? { ...p, likes: Math.max(Number(counts[postId] ?? 0), 0) }
+          : p
+      )
+    )
+  }, [])
+
+  const syncFavoriteCount = useCallback(async (postId) => {
+    const counts = await getFavoriteCountsForPosts([postId])
+    const postIdStr = String(postId)
+    setPosts((prev) =>
+      prev.map((p) =>
+        String(p.id) === postIdStr
+          ? { ...p, favorites: Math.max(Number(counts[postId] ?? 0), 0) }
+          : p
+      )
+    )
+  }, [])
 
   useEffect(() => {
     async function loadData() {
@@ -140,7 +64,18 @@ export default function SearchPosts({ user }) {
           console.error(postsError)
           setPosts([])
         } else {
-          setPosts(postsData || [])
+          const postIds = (postsData || []).map((p) => p.id)
+          const [likesByPostId, favsByPostId] = await Promise.all([
+            getLikeCountsForPosts(postIds),
+            getFavoriteCountsForPosts(postIds),
+          ])
+          setPosts(
+            (postsData || []).map((p) => ({
+              ...p,
+              likes: Math.max(Number(likesByPostId[p.id] ?? 0), 0),
+              favorites: Math.max(Number(favsByPostId[p.id] ?? 0), 0),
+            }))
+          )
         }
 
         const { data: profilesData, error: profilesError } = await supabase
@@ -286,92 +221,132 @@ export default function SearchPosts({ user }) {
     setActionLoadingId("")
   }
 
+  const handleToggleLike = async (postId) => {
+    if (!user?.id) {
+      alert("Войдите в аккаунт, чтобы ставить лайки")
+      return
+    }
+
+    const postIdStr = String(postId)
+    if (pendingLikes.has(postIdStr)) return
+
+    setPendingLikes((prev) => new Set(prev).add(postIdStr))
+    try {
+      const ok = await toggleLike(postId)
+      if (ok) await syncLikeCount(postId)
+    } finally {
+      setPendingLikes((prev) => {
+        const next = new Set(prev)
+        next.delete(postIdStr)
+        return next
+      })
+    }
+  }
+
+  const handleToggleFavorite = async (postId) => {
+    if (!user?.id) {
+      alert("Войдите в аккаунт, чтобы добавлять в избранное")
+      return
+    }
+    await toggleFavorite(postId)
+    await syncFavoriteCount(postId)
+  }
+
 
   return (
-    <div style={styles.container}>
-      <h1 style={styles.title}>🔎 Поиск постов</h1>
+    <div className="search-page">
+      <header className="search-header">
+        <h1>Поиск</h1>
+      </header>
 
-      <div style={styles.searchWrap}>
+      <div className="mv-panel search-panel">
         <input
-          style={styles.input}
+          className="mv-input"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Введите слово или ник пользователя..."
+          placeholder="Слово в посте или ник пользователя..."
         />
-        <p style={styles.hint}>
-          Поиск работает по тексту поста и по нику автора.
-        </p>
+        <p className="search-hint">Поиск по тексту поста и нику автора.</p>
       </div>
 
-      <div style={styles.postsContainer}>
-        {!loading && query.trim() && (
-          <>
-            {filteredUsers.length === 0 && <p>Пользователи не найдены.</p>}
-            {filteredUsers.map((profile) => (
-              <div key={profile.id} style={styles.card}>
-                <div style={styles.header}>
-                  <span style={styles.nickname}>{profile.nickname || "без ника"}</span>
+      {!loading && query.trim() && filteredUsers.length > 0 && (
+        <div className="mv-panel search-users">
+          <h2>Пользователи</h2>
+          {filteredUsers.map((profile) => (
+            <div key={profile.id} className="search-user-row">
+              <div>
+                <div className="search-user-name">{profile.nickname || "без ника"}</div>
+                {profile.bio ? <div className="search-user-bio">{profile.bio}</div> : null}
+              </div>
+              {profile.id === user?.id ? (
+                <span className="search-hint">Это вы</span>
+              ) : (
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    className={`mv-btn${followingIds.includes(profile.id) ? "" : " mv-btn--primary"}`}
+                    onClick={() => handleToggleFollow(profile.id)}
+                    disabled={actionLoadingId === `follow-${profile.id}`}
+                  >
+                    {followingIds.includes(profile.id) ? "Отписаться" : "Подписаться"}
+                  </button>
+                  <button
+                    type="button"
+                    className="mv-btn"
+                    onClick={() => handleToggleFriend(profile.id)}
+                    disabled={actionLoadingId === `friend-${profile.id}`}
+                  >
+                    {friendIds.includes(profile.id) ? "Убрать из друзей" : "В друзья"}
+                  </button>
                 </div>
-                {profile.bio ? <p style={styles.hint}>{profile.bio}</p> : null}
-                {profile.id === user?.id ? (
-                  <p style={{ ...styles.hint, marginTop: 8 }}>Это ваш аккаунт</p>
-                ) : (
-                  <div style={{ display: "flex", gap: 10, marginTop: 8, flexWrap: "wrap" }}>
-                    <button
-                      onClick={() => handleToggleFollow(profile.id)}
-                      disabled={actionLoadingId === `follow-${profile.id}`}
-                      style={{
-                        borderRadius: 7,
-                        border: "none",
-                        background: followingIds.includes(profile.id) ? "#475569" : "#2563eb",
-                        color: "#fff",
-                        padding: "8px 12px",
-                        cursor: "pointer",
-                      }}
-                    >
-                      {followingIds.includes(profile.id) ? "Отписаться" : "Подписаться"}
-                    </button>
-                    <button
-                      onClick={() => handleToggleFriend(profile.id)}
-                      disabled={actionLoadingId === `friend-${profile.id}`}
-                      style={{
-                        borderRadius: 7,
-                        border: "none",
-                        background: friendIds.includes(profile.id) ? "#b45309" : "#16a34a",
-                        color: "#fff",
-                        padding: "8px 12px",
-                        cursor: "pointer",
-                      }}
-                    >
-                      {friendIds.includes(profile.id) ? "Убрать из друзей" : "Добавить в друзья"}
-                    </button>
-                  </div>
-                )}
-              </div>
-            ))}
-          </>
-        )}
-      </div>
-
-      <div style={styles.postsContainer}>
-        {loading && <p>Загрузка...</p>}
-        {!loading && filteredPosts.length === 0 && <p>Ничего не найдено.</p>}
-
-        {!loading &&
-          filteredPosts.map((post) => (
-            <div key={post.id} style={styles.card}>
-              <div style={styles.header}>
-                <span style={styles.nickname}>
-                  {getPostAuthorNickname(post, profilesById, user)}
-                </span>
-                <span style={styles.date}>
-                  {/* Казахстанское время! */}
-                  {formatKZDate(post.created_at)}
-                </span>
-              </div>
-              <p style={styles.content}>{post.content}</p>
+              )}
             </div>
           ))}
+        </div>
+      )}
+
+      <div className="search-results">
+        {loading && <p className="mv-empty">Загрузка...</p>}
+        {!loading && query.trim() && filteredUsers.length === 0 && filteredPosts.length === 0 && (
+          <p className="mv-empty">Ничего не найдено.</p>
+        )}
+
+        {!loading &&
+          filteredPosts.map((post) => {
+            const postIdStr = String(post.id)
+            const liked = likedPostIds.includes(postIdStr)
+            const faved = favoritePostIds.includes(postIdStr)
+            const likePending = pendingLikes.has(postIdStr)
+
+            return (
+            <article key={post.id} className="mv-panel search-result-card">
+              <div className="search-result-meta">
+                <span className="search-result-author">
+                  {getPostAuthorNickname(post, profilesById, user)}
+                </span>
+                <time className="search-result-date">{formatKZDate(post.created_at)}</time>
+              </div>
+              <p className="search-result-text">{post.content}</p>
+              <div className="post-actions search-result-actions">
+                <LikeButton
+                  variant="feed"
+                  className={`post-action-btn post-action-btn--like${liked ? " is-liked" : ""}`}
+                  liked={liked}
+                  count={Math.max(Number(post.likes ?? 0), 0)}
+                  disabled={likePending}
+                  onClick={() => handleToggleLike(post.id)}
+                />
+                <FavoriteButton
+                  variant="feed"
+                  className={`post-action-btn post-action-btn--fav${faved ? " is-faved" : ""}`}
+                  favorited={faved}
+                  count={Math.max(Number(post.favorites ?? 0), 0)}
+                  onClick={() => handleToggleFavorite(post.id)}
+                />
+              </div>
+            </article>
+            )
+          })}
       </div>
     </div>
   )

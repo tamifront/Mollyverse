@@ -27,9 +27,9 @@ drop policy if exists "post_likes_select_own" on public.post_likes;
 drop policy if exists "post_likes_insert_own" on public.post_likes;
 drop policy if exists "post_likes_delete_own" on public.post_likes;
 
-create policy "post_likes_select_own"
+create policy "post_likes_select_authenticated"
 on public.post_likes for select to authenticated
-using (auth.uid() = user_id);
+using (true);
 
 create policy "post_likes_insert_own"
 on public.post_likes for insert to authenticated

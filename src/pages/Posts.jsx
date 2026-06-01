@@ -1,211 +1,13 @@
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
 import { supabase } from "../lib/supabase"
 import { POST_SOURCE_FEED, isVisibleInFeed } from "../utils/postSource"
 import { getPostAuthorNickname, loadAllNicknamesMap } from "../utils/profiles"
 import { usePostReactions } from "../hooks/usePostReactions"
-
-function formatKZDateAlmaty(dt) {
-  if (!dt) return ""
-  try {
-    let dateObj
-    if (typeof dt === "string") {
-      if (!dt.endsWith("Z") && !dt.includes("+")) {
-        dateObj = new Date(dt + "Z")
-      } else {
-        dateObj = new Date(dt)
-      }
-    } else if (dt instanceof Date) {
-      dateObj = dt
-    } else {
-      return ""
-    }
-
-    try {
-      const options = {
-        timeZone: "Asia/Almaty",
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false,
-      }
-      const parts = new Intl.DateTimeFormat("ru-RU", options).formatToParts(dateObj)
-      const get = type => parts.find(p => p.type === type)?.value ?? ""
-      return `${get("day")}.${get("month")}.${get("year")} ${get("hour")}:${get("minute")}`
-    } catch (e) {
-      const utc = dateObj.getTime()
-      const tzDateObj = new Date(utc + 6 * 60 * 60 * 1000)
-      const day = String(tzDateObj.getUTCDate()).padStart(2, "0")
-      const month = String(tzDateObj.getUTCMonth() + 1).padStart(2, "0")
-      const year = tzDateObj.getUTCFullYear()
-      const hours = String(tzDateObj.getUTCHours()).padStart(2, "0")
-      const mins = String(tzDateObj.getUTCMinutes()).padStart(2, "0")
-      return `${day}.${month}.${year} ${hours}:${mins}`
-    }
-  } catch (e) {
-    return ""
-  }
-}
-
-// -- Twitter/Reddit inspired styles --
-const cardTheme = {
-  container: {
-    minHeight: '100vh',
-    background: 'linear-gradient(135deg, #181c22 0%, #232946 100%)',
-    padding: '36px 0',
-    fontFamily: "'Inter', 'Segoe UI', Arial, sans-serif",
-  },
-  pageTitle: {
-    fontWeight: 800,
-    fontSize: 32,
-    margin: "0 0 32px 0",
-    color: "#ffeefb",
-    textAlign: "center",
-    letterSpacing: "1px",
-    textShadow: "0 2px 10px rgba(30,0,10,0.10)"
-  },
-  newPostForm: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 12,
-    background: "rgba(36,39,41,.92)",
-    borderRadius: 18,
-    maxWidth: 520,
-    margin: "0 auto 32px auto",
-    padding: "20px 20px 18px 20px",
-    boxShadow: "0 2px 12px 0 rgba(0,0,0,0.13), 0 1.5px 9px 0 rgba(255,0,20,0.04)"
-  },
-  input: {
-    borderRadius: 10,
-    border: "1.2px solid rgba(70,70,80,0.22)",
-    padding: "11px 13px",
-    fontSize: 18,
-    background: "#20222d",
-    color: "#f5f5f7",
-    outline: "none",
-    marginBottom: 3,
-    resize: 'vertical'
-  },
-  button: {
-    background: "#2C2F3C",
-    border: "1.5px solid #7979bb30",
-    color: "#fff",
-    borderRadius: 7,
-    cursor: "pointer",
-    padding: "8px 22px",
-    fontWeight: 700,
-    fontSize: 16,
-    alignSelf: "flex-end",
-    transition: "background .13s, border .11s"
-  },
-  postsContainer: {
-    marginTop: 8,
-    display: "flex",
-    flexDirection: "column",
-    gap: 16,
-    width: "100%",
-    maxWidth: 610,
-    marginLeft: "auto",
-    marginRight: "auto"
-  },
-  card: {
-    background: "rgba(34,39,46,0.98)",
-    borderRadius: 18,
-    // borderTop: "3px solid #5366fd30",
-    border: "1.5px solid #404878",
-    boxShadow: "0 1.5px 11px 0 rgba(0,0,0,0.09), 0 1.5px 7px 0 rgba(255,0,20,0.02)",
-    padding: "20px 20px 15px 18px",
-    display: "flex",
-    gap: 14,
-    position: "relative",
-    transition: "box-shadow .15s, border .17s",
-    flexDirection: "row",
-  },
-  avatar: {
-    flexShrink: 0,
-    width: 46,
-    height: 46,
-    borderRadius: "50%",
-    background: "linear-gradient(135deg, #495aff 55%, #ff4157 100%)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    color: "#fff",
-    fontWeight: 700,
-    fontSize: 22,
-    marginTop: 2,
-    userSelect: "none",
-    boxShadow: "0 2px 12px rgba(20,44,245,0.09)"
-  },
-  main: {
-    flex: 1,
-    display: "flex",
-    flexDirection: "column",
-    minWidth: 0
-  },
-  cardHeader: {
-    display: "flex",
-    alignItems: "center",
-    gap: 16,
-    marginBottom: 8,
-    marginTop: 0
-  },
-  author: {
-    color: "#84aaff",
-    fontWeight: 700,
-    fontSize: 17,
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    maxWidth: 180
-  },
-  date: {
-    color: "#8196b2",
-    fontSize: 13,
-    fontWeight: 400,
-  },
-  content: {
-    fontSize: 18,
-    color: "#f1f0f3",
-    marginBottom: 15,
-    marginTop: 1,
-    wordBreak: "break-word",
-    whiteSpace: "pre-line",
-    lineHeight: 1.55,
-  },
-  cardActions: {
-    display: "flex",
-    gap: 28,
-    alignItems: "center",
-    marginTop: 2,
-    marginBottom: 0,
-    fontSize: 17,
-    opacity: 0.97,
-    userSelect: "none"
-  },
-  iconAction: {
-    background: "none",
-    border: "none",
-    color: "#bcbde3",
-    fontSize: 19,
-    fontWeight: 500,
-    display: "flex",
-    alignItems: "center",
-    gap: 6,
-    cursor: "pointer",
-    padding: "0 2px",
-    borderRadius: 5,
-    transition: "background .11s, color .12s"
-  },
-  iconActionLiked: {
-    color: "#e64367",
-    backgroundColor: "rgba(255,54,78,0.06)"
-  },
-  iconActionFav: {
-    color: "#ffd36b",
-    backgroundColor: "rgba(250,230,82,0.05)"
-  },
-}
+import { formatKZDateAlmaty } from "../utils/datetime"
+import { getLikeCountsForPosts, getFavoriteCountsForPosts } from "../utils/postLikes"
+import LikeButton from "../components/LikeButton"
+import FavoriteButton from "../components/FavoriteButton"
+import "../styles/Posts.css"
 
 function getAvatarLetter(name) {
   if (!name) return "U"
@@ -217,11 +19,38 @@ export default function Posts({ user }) {
   const [text, setText] = useState("")
   const [profilesById, setProfilesById] = useState({})
   const [loadError, setLoadError] = useState("")
-  const [myLikedIds, setMyLikedIds] = useState([])
+  const [pendingLikes, setPendingLikes] = useState(() => new Set())
+
   const {
+    likedPostIds,
     favoritePostIds,
+    toggleLike,
     toggleFavorite,
   } = usePostReactions(user)
+
+  const syncLikeCount = useCallback(async (postId) => {
+    const counts = await getLikeCountsForPosts([postId])
+    const postIdStr = String(postId)
+    setPosts((prev) =>
+      prev.map((p) =>
+        String(p.id) === postIdStr
+          ? { ...p, likes: Math.max(Number(counts[postId] ?? 0), 0) }
+          : p
+      )
+    )
+  }, [])
+
+  const syncFavoriteCount = useCallback(async (postId) => {
+    const counts = await getFavoriteCountsForPosts([postId])
+    const postIdStr = String(postId)
+    setPosts((prev) =>
+      prev.map((p) =>
+        String(p.id) === postIdStr
+          ? { ...p, favorites: Math.max(Number(counts[postId] ?? 0), 0) }
+          : p
+      )
+    )
+  }, [])
 
   async function loadPosts() {
     const { data: allPosts, error } = await supabase
@@ -232,47 +61,21 @@ export default function Posts({ user }) {
       setLoadError(error.message || "Не удалось загрузить посты")
       setPosts([])
       setProfilesById({})
-      setMyLikedIds([])
       return
     }
     setLoadError("")
 
-    // Получаем id всех видимых постов
     const filtered = (allPosts || []).filter(isVisibleInFeed)
-    const postIds = filtered.map(p => p.id)
+    const postIds = filtered.map((p) => p.id)
+    const [likesByPostId, favsByPostId] = await Promise.all([
+      getLikeCountsForPosts(postIds),
+      getFavoriteCountsForPosts(postIds),
+    ])
 
-    // Получаем count лайков для каждого поста
-    let likesByPostId = {}
-    if (postIds.length > 0) {
-      const { data: likeRows, error: likesErr } = await supabase
-        .from("post_likes")
-        .select("post_id")
-        .in("post_id", postIds)
-      if (!likesErr && Array.isArray(likeRows)) {
-        for (const { post_id } of likeRows) {
-          likesByPostId[post_id] = (likesByPostId[post_id] || 0) + 1
-        }
-      }
-    }
-
-    // Получаем какие посты лайкнул текущий пользователь
-    let myLiked = []
-    if (user?.id && postIds.length > 0) {
-      const { data: likedRows } = await supabase
-        .from("post_likes")
-        .select("post_id")
-        .eq("user_id", user.id)
-        .in("post_id", postIds)
-      if (Array.isArray(likedRows)) {
-        myLiked = likedRows.map(row => String(row.post_id))
-      }
-    }
-    setMyLikedIds(myLiked)
-
-    // Окончательный массив постов с лайками
-    const sanitizedPosts = filtered.map(p => ({
+    const sanitizedPosts = filtered.map((p) => ({
       ...p,
       likes: Math.max(Number(likesByPostId[p.id] ?? 0), 0),
+      favorites: Math.max(Number(favsByPostId[p.id] ?? 0), 0),
     }))
     setPosts(sanitizedPosts)
     setProfilesById(await loadAllNicknamesMap(user))
@@ -280,7 +83,7 @@ export default function Posts({ user }) {
 
   useEffect(() => {
     loadPosts()
-    // eslint-disable-next-line
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id])
 
   async function handleToggleLike(postId) {
@@ -288,46 +91,34 @@ export default function Posts({ user }) {
       alert("Войдите в аккаунт, чтобы ставить лайки")
       return
     }
-    const postIdStr = String(postId)
-    const isLiked = myLikedIds.includes(postIdStr)
-    // Оптимистичное обновление UI
-    setMyLikedIds(ids =>
-      isLiked ? ids.filter(id => id !== postIdStr) : [...ids, postIdStr]
-    )
-    setPosts(posts =>
-      posts.map(p => {
-        if (String(p.id) === postIdStr) {
-          let likes = Number(p.likes ?? 0)
-          if (isLiked) {
-            likes = Math.max(likes - 1, 0)
-          } else {
-            likes = likes + 1
-          }
-          return { ...p, likes }
-        }
-        return p
-      })
-    )
 
-    // Обновляем в базе
-    if (isLiked) {
-      // Убрать лайк
-      const { error } = await supabase
-        .from("post_likes")
-        .delete()
-        .match({ post_id: postId, user_id: user.id })
-      // Не трогаем UI дальше
-    } else {
-      // Поставить лайк
-      const { error } = await supabase
-        .from("post_likes")
-        .insert({ post_id: postId, user_id: user.id, created_at: new Date().toISOString() })
-      // Не трогаем UI дальше
+    const postIdStr = String(postId)
+    if (pendingLikes.has(postIdStr)) return
+
+    setPendingLikes((prev) => new Set(prev).add(postIdStr))
+    try {
+      const ok = await toggleLike(postId)
+      if (ok) await syncLikeCount(postId)
+    } finally {
+      setPendingLikes((prev) => {
+        const next = new Set(prev)
+        next.delete(postIdStr)
+        return next
+      })
     }
-    // Не перегружаем всё - посты не подтягиваются снова, UI реагирует мгновенно как в соц сетях
   }
 
-  async function createPost() {
+  async function handleToggleFavorite(postId) {
+    if (!user?.id) {
+      alert("Войдите в аккаунт, чтобы добавлять в избранное")
+      return
+    }
+    await toggleFavorite(postId)
+    await syncFavoriteCount(postId)
+  }
+
+  async function createPost(e) {
+    e?.preventDefault()
     if (!user?.id) {
       alert("Войдите в аккаунт")
       return
@@ -364,105 +155,83 @@ export default function Posts({ user }) {
   }
 
   return (
-    <div style={cardTheme.container}>
-      <h1 style={cardTheme.pageTitle}>📰 Посты</h1>
-      <form
-        style={cardTheme.newPostForm}
-        onSubmit={e => {
-          e.preventDefault()
-          createPost()
-        }}
-      >
+    <div className="posts-page">
+      <header className="posts-header">
+        <h1>Лента</h1>
+        <p>Новости и посты сообщества</p>
+      </header>
+
+      <form className="mv-panel mv-panel--compose posts-compose" onSubmit={createPost}>
         <textarea
-          style={cardTheme.input}
+          className="mv-textarea"
           value={text}
           onChange={(e) => setText(e.target.value)}
           placeholder="Что у тебя нового?"
           rows={3}
         />
-        <button
-          type="submit"
-          style={{
-            ...cardTheme.button,
-            opacity: !text.trim() ? 0.5 : 1,
-            pointerEvents: !text.trim() ? "none" : "auto"
-          }}
-          disabled={!text.trim()}
-        >
-          <span style={{ fontWeight: 800, marginRight: 6 }}>➤</span> Опубликовать
-        </button>
+        <div className="posts-compose-actions">
+          <button
+            type="submit"
+            className="mv-btn mv-btn--primary"
+            disabled={!text.trim()}
+          >
+            Опубликовать
+          </button>
+        </div>
       </form>
 
-      <div style={cardTheme.postsContainer}>
+      <div className="posts-feed">
         {loadError ? (
-          <p style={{ color: "#ff8a8a", textAlign: "center", fontSize: 17 }}>
+          <p className="posts-error">
             Ошибка: {loadError}. Выполни supabase/fix_all.sql в Supabase.
           </p>
         ) : null}
+
         {!loadError && posts.length === 0 ? (
-          <p style={{ color: "#bbb", textAlign: "center", fontSize: 16 }}>
+          <p className="posts-empty">
             В ленте пока нет постов. Напиши пост в профиле.
           </p>
         ) : null}
+
         {posts.map((p) => {
           const authorNick = getPostAuthorNickname(p, profilesById, user)
-          const liked = myLikedIds.includes(String(p.id))
+          const postIdStr = String(p.id)
+          const liked = likedPostIds.includes(postIdStr)
+          const faved = favoritePostIds.includes(postIdStr)
+          const likePending = pendingLikes.has(postIdStr)
+          const likeCount = Math.max(Number(p.likes ?? 0), 0)
+          const favCount = Math.max(Number(p.favorites ?? 0), 0)
+
           return (
-            <div key={p.id} style={cardTheme.card}>
-              <div style={cardTheme.avatar}>
-                {getAvatarLetter(authorNick)}
-              </div>
-              <div style={cardTheme.main}>
-                <div style={cardTheme.cardHeader}>
-                  <span style={cardTheme.author}>{authorNick}</span>
-                  <span style={cardTheme.date} title={p.created_at}>
+            <article key={p.id} className="post-card">
+              <div className="post-avatar">{getAvatarLetter(authorNick)}</div>
+              <div className="post-body">
+                <div className="post-meta">
+                  <span className="post-author">{authorNick}</span>
+                  <time className="post-date" dateTime={p.created_at}>
                     {formatKZDateAlmaty(p.created_at)}
-                  </span>
+                  </time>
                 </div>
-                <div style={cardTheme.content}>
-                  {p.content}
-                </div>
-                <div style={cardTheme.cardActions}>
-                  <button
-                    type="button"
+                <p className="post-text">{p.content}</p>
+                <div className="post-actions">
+                  <LikeButton
+                    variant="feed"
+                    className={`post-action-btn post-action-btn--like${liked ? " is-liked" : ""}`}
+                    liked={liked}
+                    count={likeCount}
+                    disabled={likePending}
                     onClick={() => handleToggleLike(p.id)}
-                    style={{
-                      ...cardTheme.iconAction,
-                      ...(liked ? cardTheme.iconActionLiked : null)
-                    }}
-                    title={liked ? "Убрать лайк" : "Поставить лайк"}
-                  >
-                    <span style={{ fontSize: 21, marginRight: 3 }}>
-                      {liked ? "❤️" : "🤍"}
-                    </span>
-                    <span style={{
-                      fontWeight: 700, fontSize: 15,
-                    }}>{Math.max(Number(p.likes ?? 0), 0)}</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!user?.id) {
-                        alert("Войдите в аккаунт, чтобы добавлять в избранное")
-                        return
-                      }
-                      toggleFavorite(p.id)
-                    }}
-                    style={{
-                      ...cardTheme.iconAction,
-                      ...(favoritePostIds.includes(String(p.id)) ? cardTheme.iconActionFav : null)
-                    }}
-                    title={
-                      favoritePostIds.includes(String(p.id))
-                        ? "Убрать из избранного"
-                        : "В избранное"
-                    }
-                  >
-                    <span style={{ fontSize: 21 }}>{favoritePostIds.includes(String(p.id)) ? "⭐" : "☆"}</span>
-                  </button>
+                  />
+                  <FavoriteButton
+                    variant="feed"
+                    className={`post-action-btn post-action-btn--fav${faved ? " is-faved" : ""}`}
+                    favorited={faved}
+                    count={favCount}
+                    onClick={() => handleToggleFavorite(p.id)}
+                  />
                 </div>
               </div>
-            </div>
+            </article>
           )
         })}
       </div>

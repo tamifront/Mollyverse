@@ -1,0 +1,99 @@
+.logout-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.logout-modal {
+  width: 100%;
+  max-width: 360px;
+  padding: 24px 22px;
+  background: var(--mv-card);
+  border: 1px solid var(--mv-border);
+  border-radius: var(--mv-radius-lg);
+  color: var(--mv-text);
+}
+
+.logout-modal h2 {
+  margin: 0 0 8px;
+  font-size: 1.125rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.logout-hint {
+  margin: 0 0 16px;
+  font-size: 0.875rem;
+  text-align: center;
+  color: var(--mv-text-muted);
+}
+
+.logout-modal input {
+  width: 100%;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  font-size: 0.9375rem;
+  color: var(--mv-text);
+  background: var(--mv-bg);
+  border: 1px solid var(--mv-border);
+  border-radius: var(--mv-radius);
+  outline: none;
+}
+
+.logout-modal input:focus {
+  border-color: var(--mv-accent);
+}
+
+.logout-error {
+  margin: 0 0 12px;
+  font-size: 0.875rem;
+  text-align: center;
+  color: var(--mv-danger);
+}
+
+.logout-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.logout-actions button {
+  flex: 1;
+  padding: 10px 14px;
+  border-radius: var(--mv-radius);
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--mv-border);
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.logout-cancel {
+  background: transparent;
+  color: var(--mv-text-secondary);
+}
+
+.logout-cancel:hover:not(:disabled) {
+  background: var(--mv-bg-elevated);
+  color: var(--mv-text);
+}
+
+.logout-submit {
+  background: var(--mv-accent);
+  border-color: var(--mv-accent);
+  color: #fff;
+}
+
+.logout-submit:hover:not(:disabled) {
+  background: var(--mv-accent-hover);
+  border-color: var(--mv-accent-hover);
+}
+
+.logout-actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

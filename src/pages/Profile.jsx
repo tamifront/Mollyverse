@@ -1,132 +1,100 @@
 import { useEffect, useState, useCallback } from "react"
 import { supabase } from "../lib/supabase"
-import { formatKZDate } from "../utils/datetime"
 import { POST_SOURCE_PROFILE } from "../utils/postSource"
 import { loadAllNicknamesMap } from "../utils/profiles"
 import { usePostReactions } from "../hooks/usePostReactions"
+import { formatKZDateAlmaty } from "../utils/datetime"
+import { loadLikesMapForPosts, getFavoriteCountsForPosts } from "../utils/postLikes"
+import LikeButton from "../components/LikeButton"
+import FavoriteButton from "../components/FavoriteButton"
+import "../styles/Profile.css"
 
-// Вынесем оформление отдельного поста как в Posts.jsx (адаптировано)
-function PostCard({
-  post,
-  author,
-  user,
-  liked,
-  favorited,
-  onLike,
-  onFavorite,
-  onDelete,
-  canDelete
-}) {
+function getAvatarLetter(name) {
+  if (!name) return "U"
+  return String(name).trim()[0]?.toUpperCase() || "U"
+}
+
+// New helper to show a popup with users who liked the post
+function LikedUsersPopup({ open, onClose, users }) {
+  if (!open) return null
   return (
-    <div
-      style={{
-        background: "#191b20",
-        borderRadius: 18,
-        boxShadow: "0 2px 14px 0 rgba(0,0,0,.14)",
-        margin: "18px auto",
-        padding: "19px 20px 13px 20px",
-        border: "1.5px solid #22242a",
-        maxWidth: 540,
-        position: "relative",
-        color: "#fff"
-      }}
-    >
-      <div style={{
-        display: "flex",
-        alignItems: "center",
-        marginBottom: 4,
-        fontSize: 17,
-        fontWeight: 700,
-        letterSpacing: 0.15
-      }}>
-        <span style={{color:"#b1d4fc"}}>
-          {author?.nickname || (post.user_id === user.id ? "Вы" : "без ника")}
-        </span>
-        <span style={{
-          fontWeight: 400,
-          color: "#8a97ac",
-          fontSize: 14,
-          marginLeft: 11
-        }}>
-          {formatKZDate(post.created_at)}
-        </span>
-        {post.edited && (
-          <span style={{color:"#fbdb7e", marginLeft: 12, fontSize:13}} title="Пост был отредактирован"> (изменён)</span>
+    <div className="mv-modal-overlay" onClick={onClose}>
+      <div className="mv-modal" onClick={(e) => e.stopPropagation()}>
+        <h3>Понравилось пользователям</h3>
+        {users.length === 0 ? (
+          <p className="mv-hint" style={{ padding: 0, textAlign: "left" }}>Пока никто не лайкнул</p>
+        ) : (
+          users.map((u) => (
+            <div key={u.id} className="mv-modal-user">
+              <span className="mv-modal-user-avatar">{getAvatarLetter(u.nickname)}</span>
+              <span>{u.nickname || "Без ника"}</span>
+            </div>
+          ))
         )}
-      </div>
-      <div style={{
-        fontSize: 19,
-        fontWeight: 400,
-        marginBottom: 13,
-        lineHeight: 1.42,
-        wordBreak: "break-word"
-      }}>
-        {post.content}
-      </div>
-      <div style={{
-        display: "flex",
-        gap: 10,
-        alignItems: "center",
-        marginTop: 3
-      }}>
-        <button
-          onClick={() => onLike(post.id)}
-          style={{
-            background:"none",
-            border:"none",
-            color: liked ? "#ff5277" : "#e1e1e1",
-            fontWeight:700,
-            fontSize:19,
-            display:"flex",
-            alignItems:"center",
-            cursor: "pointer",
-            padding: "2px 7px 2px 0"
-          }}
-          title={liked ? "Убрать лайк" : "Поставить лайк"}
-        >
-          <span style={{fontSize:22, marginRight:3}}>❤️</span>{liked ? "Уже нравится" : "Лайк"}
+        <button type="button" className="mv-btn mv-btn--ghost" style={{ width: "100%", marginTop: 16 }} onClick={onClose}>
+          Закрыть
         </button>
-        <button
-          onClick={() => onFavorite(post.id)}
-          style={{
-            background:"none",
-            border:"none",
-            color: favorited ? "#ffd36b" : "#e7e7c7",
-            fontWeight:700,
-            fontSize:19,
-            display:"flex",
-            alignItems:"center",
-            cursor:"pointer",
-            padding: "2px 7px 2px 0"
-          }}
-          title={favorited ? "Убрать из избранного" : "В избранное"}
-        >
-          <span style={{fontSize:22, marginRight:3}}>⭐</span>{favorited ? "В избранном" : "В избранное"}
-        </button>
-        {canDelete && (
-          <button
-            onClick={() => onDelete(post.id)}
-            style={{
-              marginLeft: "auto",
-              background: "none",
-              border: "none",
-              color: "#ff6464",
-              fontWeight: 800,
-              cursor: "pointer",
-              fontSize: 18,
-              letterSpacing: ".05em"
-            }}
-          >
-            🗑️ удалить
-          </button>
-        )}
       </div>
     </div>
   )
 }
 
+// ── PostCard теперь со всплывающим списком пользователей, поставивших лайк ──
+function PostCard({ post, authorNick, user, liked, favorited, favoriteCount, onLike, onFavorite, onDelete, canDelete, likeUsers }) {
+  const [popupOpen, setPopupOpen] = useState(false)
+
+  const handleLikesCountClick = (e) => {
+    e.stopPropagation()
+    setPopupOpen(true)
+  }
+
+  return (
+    <article className="post-card">
+      <div className="post-avatar">{getAvatarLetter(authorNick)}</div>
+      <div className="post-body">
+        <div className="post-meta">
+          <span className="post-author">{authorNick}</span>
+          <time className="post-date" dateTime={post.created_at}>
+            {formatKZDateAlmaty(post.created_at)}
+          </time>
+          {post.edited && <span className="post-edited">(изменён)</span>}
+        </div>
+        <p className="post-text">{post.content}</p>
+        <div className="post-actions">
+          <LikeButton
+            variant="profile"
+            liked={liked}
+            onClick={() => onLike(post.id)}
+            count={Math.max(Number(likeUsers?.length ?? post.likes ?? 0), 0)}
+            onCountClick={likeUsers?.length ? handleLikesCountClick : undefined}
+            className={`post-action-btn post-action-btn--like${liked ? " is-liked" : ""}`}
+          />
+          <LikedUsersPopup open={popupOpen} onClose={() => setPopupOpen(false)} users={likeUsers || []} />
+          <FavoriteButton
+            variant="profile"
+            className={`post-action-btn post-action-btn--fav${favorited ? " is-faved" : ""}`}
+            favorited={favorited}
+            count={Math.max(Number(favoriteCount ?? 0), 0)}
+            onClick={() => onFavorite(post.id)}
+          />
+          {canDelete && (
+            <button
+              type="button"
+              className="post-action-btn post-action-btn--delete"
+              onClick={() => onDelete(post.id)}
+              title="Удалить пост"
+            >
+              Удалить
+            </button>
+          )}
+        </div>
+      </div>
+    </article>
+  )
+}
+
+// ── главный компонент ────────────────────────────────────────────────────────
 export default function Profile({ user, profileUserId }) {
-  // Исправим отображение постов — показываем только посты принадлежащие эффективному пользователю
   const effectiveProfileUserId = profileUserId || user?.id
 
   const [profile, setProfile] = useState(null)
@@ -143,6 +111,8 @@ export default function Profile({ user, profileUserId }) {
   const [following, setFollowing] = useState([])
   const [friends, setFriends] = useState([])
   const [activeSocialList, setActiveSocialList] = useState("")
+  const [likesMap, setLikesMap] = useState({})
+  const [favoriteCountsMap, setFavoriteCountsMap] = useState({})
 
   const {
     likedPostIds,
@@ -154,522 +124,368 @@ export default function Profile({ user, profileUserId }) {
     refresh: refreshReactions,
   } = usePostReactions(user)
 
-  // ===== PROFILE =====
+  // ── функция для загрузки пользователей, лайкнувших каждый пост ─────────────
+  const loadLikes = useCallback(async (postList) => {
+    if (!postList?.length) {
+      setLikesMap({})
+      setFavoriteCountsMap({})
+      return
+    }
+    const [likes, favCounts] = await Promise.all([
+      loadLikesMapForPosts(postList),
+      getFavoriteCountsForPosts(postList.map((p) => p.id)),
+    ])
+    setLikesMap(likes)
+    setFavoriteCountsMap(favCounts)
+  }, [])
+
+  // ── загрузка профиля ───────────────────────────────────────────────────────
   const loadProfile = useCallback(async () => {
     if (!effectiveProfileUserId) return
-
     const { data, error } = await supabase
       .from("profiles")
       .select("*")
       .eq("id", effectiveProfileUserId)
       .maybeSingle()
 
-    if (error) {
-      console.error("Ошибка загрузки профиля:", error)
-      return
-    }
+    if (error) { console.error("Ошибка загрузки профиля:", error); return }
 
     if (!data) {
-      if (profileUserId) {
-        setProfile(null)
-        setNickname("")
-        setBio("")
-        return
-      }
-
-      const initialProfile = { 
-        id: user.id,
-        nickname: user.user_metadata?.nickname || "без ника",
-        bio: ""
-      }
-
+      if (profileUserId) { setProfile(null); setNickname(""); setBio(""); return }
+      const initialProfile = { id: user.id, nickname: user.user_metadata?.nickname || "без ника", bio: "" }
       const { data: created, error: createError } = await supabase
-        .from("profiles")
-        .upsert(initialProfile, { onConflict: "id" })
-        .select()
-        .single()
-
-      if (createError) {
-        console.error("Ошибка создания профиля:", createError)
-        return
-      }
-
-      setProfile(created)
-      setNickname(created.nickname || "")
-      setBio(created.bio || "")
+        .from("profiles").upsert(initialProfile, { onConflict: "id" }).select().single()
+      if (createError) { console.error("Ошибка создания профиля:", createError); return }
+      setProfile(created); setNickname(created.nickname || ""); setBio(created.bio || "")
       return
     }
-
-    setProfile(data)
-    setNickname(data.nickname || "")
-    setBio(data.bio || "")
+    setProfile(data); setNickname(data.nickname || ""); setBio(data.bio || "")
   }, [effectiveProfileUserId, user, profileUserId])
 
-  // ===== ПОСТЫ =====
+  // ── загрузка постов ────────────────────────────────────────────────────────
   const loadPosts = useCallback(async () => {
-    if (!effectiveProfileUserId) {
-      setPosts([])
-      setPostAuthors({})
-      return
-    }
-    // Исправленный: SQL запрос возвращает только посты нужного пользователя!
+    if (!effectiveProfileUserId) { setPosts([]); setPostAuthors({}); setLikesMap({}); return }
     const { data, error } = await supabase
       .from("posts")
       .select("*")
       .eq("user_id", effectiveProfileUserId)
       .order("created_at", { ascending: false })
-
-    if (error) {
-      setPosts([])
-      return
-    }
+    if (error) { setPosts([]); setLikesMap({}); return }
     setPosts(data || [])
-
     const nickMap = await loadAllNicknamesMap(user)
     const authorsMap = {}
-    for (const [id, nickname] of Object.entries(nickMap)) {
-      authorsMap[id] = { id, nickname }
+    for (const [id, nick] of Object.entries(nickMap)) {
+      authorsMap[id] = { id, nickname: nick }
     }
     setPostAuthors(authorsMap)
-  }, [effectiveProfileUserId, user])
+    // After posts loaded, load like info
+    await loadLikes(data || [])
+  }, [effectiveProfileUserId, user, loadLikes])
 
   const mapUsersById = useCallback(async (ids = []) => {
     if (!ids.length) return []
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("id,nickname")
-      .in("id", ids)
-
-    if (error) {
-      return []
-    }
-
+    const { data, error } = await supabase.from("profiles").select("id,nickname").in("id", ids)
+    if (error) return []
     const byId = {}
-    ;(data || []).forEach((row) => {
-      byId[row.id] = row.nickname || "без ника"
-    })
-
+    ;(data || []).forEach((row) => { byId[row.id] = row.nickname || "без ника" })
     return ids.map((id) => ({ id, nickname: byId[id] || "без ника" }))
   }, [])
 
   const loadSocial = useCallback(async () => {
     if (!effectiveProfileUserId) return
-
     const [{ data: followersData }, { data: followingData }, { data: friendsData }] = await Promise.all([
       supabase.from("follows").select("follower_id").eq("following_id", effectiveProfileUserId),
       supabase.from("follows").select("following_id").eq("follower_id", effectiveProfileUserId),
       supabase.from("friends").select("friend_id").eq("user_id", effectiveProfileUserId),
     ])
-
-    const followerIds = (followersData || []).map((item) => item.follower_id)
-    const followingIds = (followingData || []).map((item) => item.following_id)
-    const friendIds = (friendsData || []).map((item) => item.friend_id)
-
     const [followersUsers, followingUsers, friendsUsers] = await Promise.all([
-      mapUsersById(followerIds),
-      mapUsersById(followingIds),
-      mapUsersById(friendIds),
+      mapUsersById((followersData || []).map((i) => i.follower_id)),
+      mapUsersById((followingData || []).map((i) => i.following_id)),
+      mapUsersById((friendsData || []).map((i) => i.friend_id)),
     ])
-
-    setFollowers(followersUsers)
-    setFollowing(followingUsers)
-    setFriends(friendsUsers)
+    setFollowers(followersUsers); setFollowing(followingUsers); setFriends(friendsUsers)
   }, [mapUsersById, effectiveProfileUserId])
 
   useEffect(() => {
-    if (!effectiveProfileUserId) {
-      setProfile(null)
-      setPosts([])
-      setPostAuthors({})
-      return
-    }
-
-    loadProfile()
-    loadPosts()
-    loadSocial()
+    if (!effectiveProfileUserId) { setProfile(null); setPosts([]); setPostAuthors({}); setLikesMap({}); return }
+    loadProfile(); loadPosts(); loadSocial()
   }, [loadPosts, loadProfile, loadSocial, effectiveProfileUserId])
 
-  // ===== СОЗДАНИЕ ПОСТА =====
+  useEffect(() => {
+    const merged = [...posts, ...likedPosts, ...favoritePosts]
+    const byId = new Map()
+    merged.forEach((p) => { if (p?.id) byId.set(p.id, p) })
+    loadLikes([...byId.values()])
+  }, [posts, likedPosts, favoritePosts, loadLikes])
+
+  // ── создание поста ─────────────────────────────────────────────────────────
   const createPost = async () => {
     if (!text.trim()) return alert("Пост не может быть пустым")
-    if (profileUserId && profileUserId !== user.id) return alert("Нельзя создавать пост не на своем аккаунте!")
-
-    const payload = {
-      user_id: user.id,
-      content: text.trim(),
-      likes: 0,
-      post_source: POST_SOURCE_PROFILE,
-    }
+    if (profileUserId && profileUserId !== user.id) return alert("Нельзя создавать пост не на своём аккаунте!")
+    const payload = { user_id: user.id, content: text.trim(), likes: 0, post_source: POST_SOURCE_PROFILE }
     let { error } = await supabase.from("posts").insert(payload)
     if (error) {
-      const { error: fallbackError } = await supabase.from("posts").insert({
-        user_id: user.id,
-        content: text.trim(),
-        likes: 0,
-      })
+      const { error: fallbackError } = await supabase.from("posts").insert({ user_id: user.id, content: text.trim(), likes: 0 })
       error = fallbackError
     }
-    if (error) {
-      alert(error.message || "Не удалось создать пост")
-      return
-    }
-
-    setText("")
-    setOpen(false)
-    loadPosts()
+    if (error) { alert(error.message || "Не удалось создать пост"); return }
+    setText(""); setOpen(false); loadPosts()
   }
 
-  // ===== УДАЛИТЬ ПОСТ =====
+  // ── удаление поста ─────────────────────────────────────────────────────────
   const handleDeletePost = async (postId) => {
-    const post = posts.find(p => p.id === postId)
+    const post = posts.find((p) => p.id === postId)
     if (!post || post.user_id !== user.id || (profileUserId && profileUserId !== user.id)) return
-
     const { error } = await supabase.from("posts").delete().eq("id", postId)
-    if (error) {
-      alert(error.message || "Не удалось удалить пост")
-      return
-    }
-
-    setPosts(prev => prev.filter(p => p.id !== postId))
-    loadPosts()
-    refreshReactions()
+    if (error) { alert(error.message || "Не удалось удалить пост"); return }
+    setPosts((prev) => prev.filter((p) => p.id !== postId))
+    loadPosts(); refreshReactions()
   }
 
-  // ===== RENDER =====
+  // Когда пользователь ставит/убирает лайк, чтобы снова получить актуальные users лайкнувших
+  const handleLikeWithReload = async (postId) => {
+    await handleLike(postId)
+    const merged = [...posts, ...likedPosts, ...favoritePosts]
+    const byId = new Map()
+    merged.forEach((p) => { if (p?.id) byId.set(p.id, p) })
+    await loadLikes([...byId.values()])
+  }
+
+  const handleFavoriteWithReload = async (postId) => {
+    await handleFavorite(postId)
+    const merged = [...posts, ...likedPosts, ...favoritePosts]
+    const byId = new Map()
+    merged.forEach((p) => { if (p?.id) byId.set(p.id, p) })
+    await loadLikes([...byId.values()])
+  }
+
+  const isOwnProfile = !profileUserId || profileUserId === user?.id
+
+  // ── рендер ────────────────────────────────────────────────────────────────
   return (
-    <div className="profile" style={{minHeight: '100vh', background:"#141516"}}>
+    <div className="profile-page">
 
-      {/* HEADER */}
-      <h1 style={{color:"#fff", marginBottom:16, fontSize:32, letterSpacing: 1, marginTop: 24}}>
-        👤 {profile?.nickname || "без ника"}
-      </h1>
+      <header className="profile-header">
+        <h1>{profile?.nickname || "без ника"}</h1>
+        {profile?.bio && <p className="profile-bio">{profile.bio}</p>}
+      </header>
 
-      {/* Кнопка редактирования профиля и создания поста - только если смотришь свой профиль */}
-      {(!profileUserId || profileUserId === user?.id) && (
-        <button
-          onClick={() => {
-            setNickname(profile?.nickname || "")
-            setBio(profile?.bio || "")
-            setSaveMsg("")
-            setEditing(true)
-          }}
-          style={{marginBottom:20, background:"#222", color: "white", border:"none", borderRadius: 7, padding:"8px 18px", cursor: "pointer", fontWeight:600}}
-        >
-          ✏️ Редактировать профиль
-        </button>
-      )}
-
-      <div style={{ maxWidth: 540, margin: "0 auto 16px", display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <button
-          onClick={() => setActiveSocialList((prev) => (prev === "followers" ? "" : "followers"))}
-          style={{ background: "#24282f", color: "#fff", border: "none", borderRadius: 6, padding: "7px 12px", cursor: "pointer" }}
-        >
-          Мои подписчики ({followers.length})
-        </button>
-        <button
-          onClick={() => setActiveSocialList((prev) => (prev === "friends" ? "" : "friends"))}
-          style={{ background: "#24282f", color: "#fff", border: "none", borderRadius: 6, padding: "7px 12px", cursor: "pointer" }}
-        >
-          Мои друзья ({friends.length})
-        </button>
-        <button
-          onClick={() => setActiveSocialList((prev) => (prev === "following" ? "" : "following"))}
-          style={{ background: "#24282f", color: "#fff", border: "none", borderRadius: 6, padding: "7px 12px", cursor: "pointer" }}
-        >
-          Мои подписки ({following.length})
-        </button>
-      </div>
-
-      {activeSocialList === "followers" && (
-        <div style={{ maxWidth: 540, margin: "0 auto 16px", background: "#1e2234", borderRadius: 10, padding: 14 }}>
-          <h3 style={{ marginTop: 0 }}>Подписчики</h3>
-          {followers.length === 0 ? <p style={{ marginBottom: 0 }}>Подписчиков пока нет.</p> : followers.map((item) => <p key={item.id} style={{ margin: "6px 0" }}>• {item.nickname}</p>)}
-        </div>
-      )}
-
-      {activeSocialList === "friends" && (
-        <div style={{ maxWidth: 540, margin: "0 auto 16px", background: "#1e2234", borderRadius: 10, padding: 14 }}>
-          <h3 style={{ marginTop: 0 }}>Друзья (видно всем)</h3>
-          {friends.length === 0 ? <p style={{ marginBottom: 0 }}>Друзей пока нет.</p> : friends.map((item) => <p key={item.id} style={{ margin: "6px 0" }}>• {item.nickname}</p>)}
-        </div>
-      )}
-
-      {activeSocialList === "following" && (
-        <div style={{ maxWidth: 540, margin: "0 auto 16px", background: "#1e2234", borderRadius: 10, padding: 14 }}>
-          <h3 style={{ marginTop: 0 }}>Подписки (видно только вам)</h3>
-          {following.length === 0 ? <p style={{ marginBottom: 0 }}>Подписок пока нет.</p> : following.map((item) => <p key={item.id} style={{ margin: "6px 0" }}>• {item.nickname}</p>)}
+      {isOwnProfile && !editing && (
+        <div className="profile-actions-center">
+          <button
+            type="button"
+            className="mv-btn mv-btn--ghost"
+            onClick={() => { setNickname(profile?.nickname || ""); setBio(profile?.bio || ""); setSaveMsg(""); setEditing(true) }}
+          >
+            Редактировать профиль
+          </button>
         </div>
       )}
 
       {editing && (
         <form
+          className="mv-panel"
           onSubmit={async (e) => {
             e.preventDefault()
             if (!user?.id || (profileUserId && profileUserId !== user.id)) return
-
-            setProfileLoading(true)
-            setSaveMsg("")
-            const payload = {
-              id: user.id,
-              nickname: nickname.trim() || "без ника",
-              bio: bio.trim()
-            }
-
-            const { data, error } = await supabase
-              .from("profiles")
-              .upsert(payload, { onConflict: "id" })
-              .select()
-              .single()
-
+            setProfileLoading(true); setSaveMsg("")
+            const payload = { id: user.id, nickname: nickname.trim() || "без ника", bio: bio.trim() }
+            const { data, error } = await supabase.from("profiles").upsert(payload, { onConflict: "id" }).select().single()
             setProfileLoading(false)
-
-            if (error) {
-                setSaveMsg(error?.message || "Ошибка сохранения 😢")
-                return
-            }
-
-            setProfile(data)
-            setNickname(data.nickname || "")
-            setBio(data.bio || "")
-            setSaveMsg("Сохранено!")
-            setEditing(false)
-          }}
-          style={{
-            maxWidth: 540,
-            margin: "0 auto 18px",
-            background: "#1e2234",
-            borderRadius: 10,
-            padding: 16
+            if (error) { setSaveMsg(error?.message || "Ошибка сохранения 😢"); return }
+            setProfile(data); setNickname(data.nickname || ""); setBio(data.bio || ""); setSaveMsg("Сохранено!"); setEditing(false)
           }}
         >
-          <label style={{ display: "block", marginBottom: 6, color: "#f7d489", fontWeight: 700 }}>
-            Ник
-          </label>
+          <label className="mv-label">Ник</label>
           <input
+            className="mv-input"
             value={nickname}
             onChange={(e) => setNickname(e.target.value)}
             disabled={profileLoading}
-            minLength={2}
-            maxLength={32}
-            placeholder="Ваш ник"
-            required
-            style={{
-              width: "100%",
-              fontSize: 16,
-              borderRadius: 6,
-              border: "1px solid #333",
-              background: "#191b20",
-              color: "#fff",
-              marginBottom: 12,
-              padding: 8
-            }}
+            minLength={2} maxLength={32} placeholder="Ваш ник" required
           />
-
-          <label style={{ display: "block", marginBottom: 6, color: "#f7d489", fontWeight: 700 }}>
-            Bio
-          </label>
+          <label className="mv-label">Bio</label>
           <textarea
+            className="mv-textarea"
             value={bio}
             onChange={(e) => setBio(e.target.value)}
             disabled={profileLoading}
-            maxLength={256}
-            placeholder="Расскажите о себе"
-            style={{
-              width: "100%",
-              minHeight: 70,
-              resize: "vertical",
-              borderRadius: 6,
-              border: "1px solid #333",
-              background: "#191b20",
-              color: "#fff",
-              marginBottom: 12,
-              padding: 8,
-              fontSize: 16
-            }}
+            maxLength={256} placeholder="Расскажите о себе"
+            rows={3}
           />
-
-          <button
-            type="submit"
-            disabled={profileLoading}
-            style={{
-              background: "#32b26a",
-              color: "#fff",
-              border: "none",
-              borderRadius: 6,
-              padding: "6px 15px",
-              fontWeight: 600,
-              cursor: profileLoading ? "not-allowed" : "pointer",
-              marginRight: 8
-            }}
-          >
-            {profileLoading ? "Сохраняем..." : "💾 Сохранить"}
-          </button>
-          <button
-            type="button"
-            disabled={profileLoading}
-            onClick={() => {
-              setEditing(false)
-              setNickname(profile?.nickname || "")
-              setBio(profile?.bio || "")
-              setSaveMsg("")
-            }}
-            style={{
-              background: "#222",
-              color: "#fff",
-              border: "1px solid #444",
-              borderRadius: 6,
-              padding: "6px 15px",
-              fontWeight: 600,
-              cursor: "pointer"
-            }}
-          >
-            Отмена
-          </button>
-
-          {saveMsg && (
-            <div
-              style={{
-                marginTop: 10,
-                color: saveMsg === "Сохранено!" ? "#55e491" : "#f96868",
-                fontWeight: 500
-              }}
+          <div className="mv-form-actions">
+            <button
+              type="button"
+              disabled={profileLoading}
+              className="mv-btn mv-btn--ghost"
+              onClick={() => { setEditing(false); setNickname(profile?.nickname || ""); setBio(profile?.bio || ""); setSaveMsg("") }}
             >
-              {saveMsg}
-            </div>
+              Отмена
+            </button>
+            <button type="submit" disabled={profileLoading} className="mv-btn mv-btn--primary">
+              {profileLoading ? "Сохраняем..." : "Сохранить"}
+            </button>
+          </div>
+          {saveMsg && (
+            <p className={saveMsg === "Сохранено!" ? "mv-msg--ok" : "mv-msg--err"}>{saveMsg}</p>
           )}
         </form>
       )}
 
-      {/* CREATE POST - только если смотришь свой профиль */}
-      {(!profileUserId || profileUserId === user?.id) && (
-        <div style={{maxWidth:540, margin:"0 auto 18px", background:"#1e2234", borderRadius:10, padding:16}}>
+      <div className="profile-social-bar">
+        {[
+          { key: "followers", label: `Подписчики (${followers.length})` },
+          { key: "friends", label: `Друзья (${friends.length})` },
+          { key: "following", label: `Подписки (${following.length})` },
+        ].map(({ key, label }) => (
           <button
-            onClick={() => setOpen(!open)}
-            style={{
-              color:"#fff",
-              background: open ? "#bce0ff" : "#24282f",
-              border: "none",
-              borderRadius: 6,
-              padding: "7px 18px",
-              fontWeight: 600,
-              cursor: "pointer",
-              marginBottom: 8
-            }}
+            key={key}
+            type="button"
+            className={`mv-btn${activeSocialList === key ? " mv-btn--active" : ""}`}
+            onClick={() => setActiveSocialList((prev) => (prev === key ? "" : key))}
           >
-            ✍️ Написать пост
+            {label}
           </button>
+        ))}
+      </div>
 
+      {activeSocialList === "followers" && (
+        <div className="mv-panel profile-social-list">
+          <h3>Подписчики</h3>
+          {followers.length === 0
+            ? <p className="mv-hint" style={{ padding: 0, textAlign: "left" }}>Подписчиков пока нет.</p>
+            : followers.map((item) => <p key={item.id}>• {item.nickname}</p>)}
+        </div>
+      )}
+      {activeSocialList === "friends" && (
+        <div className="mv-panel profile-social-list">
+          <h3>Друзья</h3>
+          {friends.length === 0
+            ? <p className="mv-hint" style={{ padding: 0, textAlign: "left" }}>Друзей пока нет.</p>
+            : friends.map((item) => <p key={item.id}>• {item.nickname}</p>)}
+        </div>
+      )}
+      {activeSocialList === "following" && (
+        <div className="mv-panel profile-social-list">
+          <h3>Подписки</h3>
+          {following.length === 0
+            ? <p className="mv-hint" style={{ padding: 0, textAlign: "left" }}>Подписок пока нет.</p>
+            : following.map((item) => <p key={item.id}>• {item.nickname}</p>)}
+        </div>
+      )}
+
+      {isOwnProfile && (
+        <div className="mv-panel profile-compose-toggle">
+          <button type="button" className="mv-btn" onClick={() => setOpen(!open)}>
+            {open ? "Свернуть" : "Написать пост"}
+          </button>
           {open && (
-            <div style={{marginTop:10}}>
+            <div className="profile-compose-inner">
               <textarea
+                className="mv-textarea"
                 value={text}
                 onChange={(e) => setText(e.target.value)}
-                style={{
-                  width: "100%",
-                  minHeight: 70,
-                  resize: "vertical",
-                  borderRadius: 7,
-                  border: "1px solid #333",
-                  background: "#191b20",
-                  color: "#fff",
-                  marginBottom: 8,
-                  padding: 8,
-                  fontSize: 16
-                }}
-                placeholder="Что у вас нового?"
+                placeholder="Что у тебя нового?"
+                rows={3}
               />
               <button
+                type="button"
+                className="mv-btn mv-btn--primary"
                 onClick={createPost}
-                style={{
-                  background: "#60b0ff",
-                  color: "#fff",
-                  border: "none",
-                  borderRadius: 6,
-                  padding: "6px 15px",
-                  fontWeight:600,
-                  cursor:"pointer"
-                }}
+                disabled={!text.trim()}
               >
-                💾 Сохранить
+                Опубликовать
               </button>
             </div>
           )}
         </div>
       )}
 
-      {/* Показываем только посты effectiveProfileUserId */}
-      <div>
-        {posts.map(p => {
-          const author = postAuthors[p.user_id]
-          const canDel = (p.user_id === user.id && (!profileUserId || profileUserId === user.id))
+      <div className="posts-feed">
+        {posts.length === 0 && (
+          <p className="mv-empty">Постов пока нет.</p>
+        )}
+        {posts.map((p) => {
+          const authorNick = postAuthors[p.user_id]?.nickname || (p.user_id === user?.id ? "Вы" : "без ника")
+          const canDel = p.user_id === user?.id && isOwnProfile
           return (
             <PostCard
               key={p.id}
               post={p}
-              author={author}
+              authorNick={authorNick}
               user={user}
               liked={likedPostIds.includes(String(p.id))}
               favorited={favoritePostIds.includes(String(p.id))}
-              onLike={handleLike}
-              onFavorite={handleFavorite}
+              onLike={handleLikeWithReload}
+              onFavorite={handleFavoriteWithReload}
               onDelete={handleDeletePost}
               canDelete={canDel}
+              likeUsers={likesMap[p.id] || []}
+              favoriteCount={favoriteCountsMap[p.id] ?? 0}
             />
           )
         })}
       </div>
 
-      {/* ЛАЙКНУТЫЕ ПОСТЫ (только свои) */}
-      {(!profileUserId || profileUserId === user?.id) && (
+      {/* Лайкнутые посты — только свой профиль */}
+      {isOwnProfile && (
         <>
-          <h2 style={{color:"#ffcfd5", marginTop:32, marginBottom: 7, fontWeight:900, letterSpacing:1}}>
-            ❤️ Лайкнутые посты
-          </h2>
-          {likedPosts.length === 0 && <p style={{color:"#bbb", marginBottom:16, marginTop:4}}>Нет лайкнутых постов.</p>}
-          {likedPosts.map(p => {
-            const author = postAuthors[p.user_id]
-            return (
-              <PostCard
-                key={p.id}
-                post={p}
-                author={author}
-                user={user}
-                liked={true}
-                favorited={favoritePostIds.includes(String(p.id))}
-                onLike={handleLike}
-                onFavorite={handleFavorite}
-                onDelete={() => {}}
-                canDelete={false}
-              />
-            )
-          })}
+          <h2 className="mv-section-title profile-section--liked">Лайкнутые посты</h2>
+          <div className="posts-feed">
+            {likedPosts.length === 0 && (
+              <p className="mv-empty">Нет лайкнутых постов.</p>
+            )}
+            {likedPosts.map((p) => {
+              const authorNick = postAuthors[p.user_id]?.nickname || "без ника"
+              return (
+                <PostCard
+                  key={p.id}
+                  post={p}
+                  authorNick={authorNick}
+                  user={user}
+                  liked={true}
+                  favorited={favoritePostIds.includes(String(p.id))}
+                  onLike={handleLikeWithReload}
+                  onFavorite={handleFavoriteWithReload}
+                  onDelete={() => {}}
+                  canDelete={false}
+                  likeUsers={likesMap[p.id] || []}
+                  favoriteCount={favoriteCountsMap[p.id] ?? 0}
+                />
+              )
+            })}
+          </div>
         </>
       )}
 
-      {/* ИЗБРАННОЕ */}
-      {(!profileUserId || profileUserId === user?.id) && (
+      {/* Избранное — только свой профиль */}
+      {isOwnProfile && (
         <>
-          <h2 style={{color:"#ffedb6", marginTop:28, marginBottom:7, fontWeight:900, letterSpacing:1}}>
-            ⭐ Избранное
-          </h2>
-          {favoritePosts.length === 0 && <p style={{color:"#bbb", marginBottom:16, marginTop:4}}>Нет избранных постов.</p>}
-          {favoritePosts.map(p => {
-            const author = postAuthors[p.user_id]
-            return (
-              <PostCard
-                key={p.id}
-                post={p}
-                author={author}
-                user={user}
-                liked={likedPostIds.includes(String(p.id))}
-                favorited={true}
-                onLike={handleLike}
-                onFavorite={handleFavorite}
-                onDelete={() => {}}
-                canDelete={false}
-              />
-            )
-          })}
+          <h2 className="mv-section-title profile-section--fav">Избранное</h2>
+          <div className="posts-feed">
+            {favoritePosts.length === 0 && (
+              <p className="mv-empty">Нет избранных постов.</p>
+            )}
+            {favoritePosts.map((p) => {
+              const authorNick = postAuthors[p.user_id]?.nickname || "без ника"
+              return (
+                <PostCard
+                  key={p.id}
+                  post={p}
+                  authorNick={authorNick}
+                  user={user}
+                  liked={likedPostIds.includes(String(p.id))}
+                  favorited={true}
+                  onLike={handleLikeWithReload}
+                  onFavorite={handleFavoriteWithReload}
+                  onDelete={() => {}}
+                  canDelete={false}
+                  likeUsers={likesMap[p.id] || []}
+                  favoriteCount={favoriteCountsMap[p.id] ?? 0}
+                />
+              )
+            })}
+          </div>
         </>
       )}
 

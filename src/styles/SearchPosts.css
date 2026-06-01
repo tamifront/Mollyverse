@@ -1,0 +1,106 @@
+.search-page {
+  width: 100%;
+  max-width: var(--mv-max-content);
+  margin: 0 auto;
+}
+
+.search-header {
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--mv-border-subtle);
+}
+
+.search-header h1 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--mv-text);
+}
+
+.search-panel {
+  margin-bottom: 20px;
+}
+
+.search-hint {
+  margin: 8px 0 0;
+  font-size: 0.8125rem;
+  color: var(--mv-text-muted);
+}
+
+.search-users {
+  margin-bottom: 24px;
+}
+
+.search-users h2 {
+  margin: 0 0 12px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--mv-text-muted);
+}
+
+.search-user-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--mv-border-subtle);
+}
+
+.search-user-row:last-child {
+  border-bottom: none;
+}
+
+.search-user-name {
+  font-weight: 600;
+  color: var(--mv-text);
+}
+
+.search-user-bio {
+  font-size: 0.8125rem;
+  color: var(--mv-text-muted);
+  margin-top: 2px;
+}
+
+.search-results {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.search-result-card {
+  padding: 18px 20px;
+}
+
+.search-result-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.search-result-author {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--mv-text);
+}
+
+.search-result-date {
+  font-size: 0.75rem;
+  color: var(--mv-text-muted);
+}
+
+.search-result-text {
+  margin: 0 0 10px;
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  color: var(--mv-text);
+  white-space: pre-line;
+  word-break: break-word;
+}
+
+.search-result-actions {
+  margin-top: 4px;
+}

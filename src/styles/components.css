@@ -1,0 +1,339 @@
+/* —— Страница —— */
+.mv-page {
+  width: 100%;
+  max-width: var(--mv-max-content);
+  margin: 0 auto;
+}
+
+.mv-page-header {
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--mv-border-subtle);
+}
+
+.mv-page-header h1 {
+  margin: 0 0 4px;
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--mv-text);
+}
+
+.mv-page-header p {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--mv-text-muted);
+}
+
+.mv-section-title {
+  margin: 32px 0 14px;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--mv-text-secondary);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.mv-empty,
+.mv-hint {
+  text-align: center;
+  color: var(--mv-text-muted);
+  font-size: 0.9rem;
+  padding: 20px 12px;
+}
+
+.mv-error {
+  color: var(--mv-danger);
+  text-align: center;
+  font-size: 0.9rem;
+  padding: 16px;
+  border: 1px solid rgba(255, 92, 92, 0.25);
+  border-radius: var(--mv-radius);
+  background: rgba(255, 92, 92, 0.06);
+}
+
+/* —— Панели / карточки —— */
+.mv-panel {
+  background: var(--mv-card);
+  border: 1px solid var(--mv-border);
+  border-radius: var(--mv-radius-lg);
+  padding: 20px;
+  margin-bottom: 16px;
+}
+
+.mv-panel--compose {
+  margin-bottom: 20px;
+}
+
+/* —— Формы —— */
+.mv-input,
+.mv-textarea {
+  width: 100%;
+  padding: 12px 14px;
+  font-size: 0.9375rem;
+  color: var(--mv-text);
+  background: var(--mv-bg);
+  border: 1px solid var(--mv-border);
+  border-radius: var(--mv-radius);
+  outline: none;
+  transition: border-color 0.15s ease;
+  resize: vertical;
+}
+
+.mv-input:focus,
+.mv-textarea:focus {
+  border-color: var(--mv-accent);
+}
+
+.mv-input::placeholder,
+.mv-textarea::placeholder {
+  color: var(--mv-text-muted);
+}
+
+.mv-label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--mv-text-secondary);
+}
+
+.mv-form-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+/* —— Кнопки —— */
+.mv-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 16px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  border-radius: var(--mv-radius);
+  border: 1px solid var(--mv-border);
+  background: transparent;
+  color: var(--mv-text-secondary);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.mv-btn:hover:not(:disabled) {
+  background: var(--mv-card-hover);
+  color: var(--mv-text);
+  border-color: var(--mv-border);
+}
+
+.mv-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.mv-btn--primary {
+  background: var(--mv-accent);
+  border-color: var(--mv-accent);
+  color: #fff;
+}
+
+.mv-btn--primary:hover:not(:disabled) {
+  background: var(--mv-accent-hover);
+  border-color: var(--mv-accent-hover);
+  color: #fff;
+}
+
+.mv-btn--ghost {
+  background: transparent;
+  border-color: var(--mv-border);
+  color: var(--mv-text-secondary);
+}
+
+.mv-btn--active {
+  border-color: var(--mv-accent);
+  color: var(--mv-accent);
+  background: var(--mv-accent-muted);
+}
+
+/* —— Карточка поста —— */
+.post-card {
+  display: flex;
+  gap: 14px;
+  padding: 18px 20px;
+  background: var(--mv-card);
+  border: 1px solid var(--mv-border);
+  border-radius: var(--mv-radius-lg);
+  transition: background 0.15s ease;
+}
+
+.post-card:hover {
+  background: var(--mv-card-hover);
+}
+
+.post-avatar {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--mv-text);
+  background: var(--mv-bg-elevated);
+  border: 1px solid var(--mv-border);
+}
+
+.post-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.post-meta {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  margin-bottom: 8px;
+}
+
+.post-author {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--mv-text);
+}
+
+.post-date {
+  font-size: 0.75rem;
+  color: var(--mv-text-muted);
+}
+
+.post-edited {
+  font-size: 0.75rem;
+  color: var(--mv-text-muted);
+}
+
+.post-text {
+  margin: 0 0 14px;
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  color: var(--mv-text);
+  white-space: pre-line;
+  word-break: break-word;
+}
+
+.post-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.post-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--mv-radius);
+  background: transparent;
+  color: var(--mv-text-muted);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.post-action-btn:hover:not(:disabled) {
+  background: var(--mv-bg-elevated);
+  color: var(--mv-text-secondary);
+}
+
+.post-action-btn:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+
+.post-action-btn--like.is-liked {
+  color: var(--mv-accent);
+}
+
+.post-action-btn--fav.is-faved {
+  color: #d4a017;
+}
+
+.post-action-btn--delete {
+  margin-left: auto;
+  color: var(--mv-text-muted);
+}
+
+.post-action-btn--delete:hover {
+  color: var(--mv-danger);
+}
+
+.posts-feed {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* —— Модалка —— */
+.mv-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.mv-modal {
+  width: 100%;
+  max-width: 360px;
+  padding: 20px;
+  background: var(--mv-card);
+  border: 1px solid var(--mv-border);
+  border-radius: var(--mv-radius-lg);
+  color: var(--mv-text);
+}
+
+.mv-modal h3 {
+  margin: 0 0 12px;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.mv-modal-user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 8px 0;
+}
+
+.mv-modal-user-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 0.8rem;
+  background: var(--mv-bg-elevated);
+  border: 1px solid var(--mv-border);
+}
+
+.mv-msg--ok {
+  color: var(--mv-success);
+  font-size: 0.875rem;
+}
+
+.mv-msg--err {
+  color: var(--mv-danger);
+  font-size: 0.875rem;
+}

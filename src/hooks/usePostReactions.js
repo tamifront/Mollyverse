@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { supabase } from "../lib/supabase"
 
 function lsKey(userId, type) {
@@ -44,12 +44,23 @@ function isReactionsTableMissing(error) {
   )
 }
 
+function isDuplicateLikeError(error) {
+  return error?.code === "23505"
+}
+
 export function usePostReactions(user) {
   const [likedPostIds, setLikedPostIds] = useState([])
   const [favoritePostIds, setFavoritePostIds] = useState([])
   const [likedPosts, setLikedPosts] = useState([])
   const [favoritePosts, setFavoritePosts] = useState([])
   const [ready, setReady] = useState(false)
+  const likedIdsRef = useRef([])
+  const likingInFlightRef = useRef(new Set())
+  const favInFlightRef = useRef(new Set())
+
+  useEffect(() => {
+    likedIdsRef.current = likedPostIds
+  }, [likedPostIds])
 
   const syncLs = useCallback(
     (likedIds, favIds, likedList, favList) => {
@@ -114,52 +125,72 @@ export function usePostReactions(user) {
 
   const toggleLike = useCallback(
     async (postId) => {
-      if (!user?.id || !postId) return
+      if (!user?.id || !postId) return false
 
       const pid = normId(postId)
-      const already = likedPostIds.includes(pid)
-      if (already) {
-        const { error } = await supabase
-          .from("post_likes")
-          .delete()
-          .eq("user_id", user.id)
-          .eq("post_id", postId)
-        if (error && !isReactionsTableMissing(error)) {
-          alert(error.message || "Не удалось убрать лайк")
-          return
+      if (likingInFlightRef.current.has(pid)) return false
+      likingInFlightRef.current.add(pid)
+
+      try {
+        const already = likedIdsRef.current.includes(pid)
+
+        if (already) {
+          const { error } = await supabase
+            .from("post_likes")
+            .delete()
+            .eq("user_id", user.id)
+            .eq("post_id", postId)
+          if (error && !isReactionsTableMissing(error)) {
+            alert(error.message || "Не удалось убрать лайк")
+            return false
+          }
+        } else {
+          const { error } = await supabase.from("post_likes").insert({
+            user_id: user.id,
+            post_id: postId,
+          })
+          if (error && !isReactionsTableMissing(error) && !isDuplicateLikeError(error)) {
+            alert(error.message || "Не удалось поставить лайк")
+            return false
+          }
         }
-      } else {
-        const { error } = await supabase.from("post_likes").insert({
-          user_id: user.id,
-          post_id: postId,
-        })
-        if (error && !isReactionsTableMissing(error)) {
-          alert(error.message || "Не удалось поставить лайк")
-          return
+
+        const nextIds = already
+          ? likedIdsRef.current.filter((id) => id !== pid)
+          : [...likedIdsRef.current.filter((id) => id !== pid), pid]
+
+        likedIdsRef.current = nextIds
+        setLikedPostIds(nextIds)
+        saveLs(lsKey(user.id, "likedPostIds"), nextIds)
+
+        if (already) {
+          setLikedPosts((prev) => {
+            const next = prev.filter((p) => normId(p.id) !== pid)
+            saveLs(lsKey(user.id, "likedPosts"), next)
+            return next
+          })
+        } else {
+          const { data: postRow } = await supabase
+            .from("posts")
+            .select("*")
+            .eq("id", postId)
+            .maybeSingle()
+          if (postRow) {
+            setLikedPosts((prev) => {
+              if (prev.some((p) => normId(p.id) === pid)) return prev
+              const next = [...prev, postRow]
+              saveLs(lsKey(user.id, "likedPosts"), next)
+              return next
+            })
+          }
         }
+
+        return true
+      } finally {
+        likingInFlightRef.current.delete(pid)
       }
-
-      const nextIds = already
-        ? likedPostIds.filter((id) => id !== pid)
-        : [...likedPostIds, pid]
-      setLikedPostIds(nextIds)
-      saveLs(lsKey(user.id, "likedPostIds"), nextIds)
-
-      let nextLikedPosts = likedPosts.filter((p) => normId(p.id) !== pid)
-      if (!already) {
-        const { data: postRow } = await supabase
-          .from("posts")
-          .select("*")
-          .eq("id", postId)
-          .maybeSingle()
-        if (postRow) nextLikedPosts = [...nextLikedPosts, postRow]
-      }
-      setLikedPosts(nextLikedPosts)
-      saveLs(lsKey(user.id, "likedPosts"), nextLikedPosts)
-
-      await refresh()
     },
-    [likedPostIds, likedPosts, refresh, user?.id]
+    [user?.id]
   )
 
   const toggleFavorite = useCallback(
@@ -167,6 +198,10 @@ export function usePostReactions(user) {
       if (!user?.id || !postId) return
 
       const pid = normId(postId)
+      if (favInFlightRef.current.has(pid)) return
+      favInFlightRef.current.add(pid)
+
+      try {
       const already = favoritePostIds.includes(pid)
       if (already) {
         const { error } = await supabase
@@ -206,10 +241,11 @@ export function usePostReactions(user) {
       }
       setFavoritePosts(nextFavoritePosts)
       saveLs(lsKey(user.id, "favoritePosts"), nextFavoritePosts)
-
-      await refresh()
+      } finally {
+        favInFlightRef.current.delete(pid)
+      }
     },
-    [favoritePostIds, favoritePosts, refresh, user?.id]
+    [favoritePostIds, favoritePosts, user?.id]
   )
 
   return {

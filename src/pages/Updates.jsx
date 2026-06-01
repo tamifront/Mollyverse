@@ -2,72 +2,9 @@ import { useEffect, useMemo, useState } from "react"
 import { supabase } from "../lib/supabase"
 import { formatKZDate } from "../utils/datetime"
 import { markUpdatesAsRead } from "../utils/updatesUnread"
+import "../styles/Updates.css"
 
 const OWNER_USER_ID = (import.meta.env.VITE_OWNER_USER_ID || "").trim()
-
-const styles = {
-  container: {
-    minHeight: "100vh",
-    background: "linear-gradient(135deg, #232946 0%, #1a1a22 100%)",
-    padding: "24px 0",
-    color: "#fff",
-  },
-  title: {
-    fontWeight: 800,
-    fontSize: 32,
-    margin: "0 0 24px 0",
-    textAlign: "center",
-  },
-  panel: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 12,
-    background: "rgba(34,39,46,0.94)",
-    borderRadius: 12,
-    maxWidth: 620,
-    margin: "0 auto 22px auto",
-    padding: "18px 20px",
-  },
-  input: {
-    borderRadius: 8,
-    border: "1px solid rgba(255,69,0,0.2)",
-    padding: "12px 13px",
-    fontSize: 16,
-    background: "rgba(0,0,0,0.23)",
-    color: "#fff",
-    outline: "none",
-    minHeight: 86,
-    resize: "vertical",
-  },
-  button: {
-    background: "#2563eb",
-    border: "none",
-    color: "#fff",
-    borderRadius: 8,
-    cursor: "pointer",
-    padding: "8px 16px",
-    fontWeight: 700,
-    alignSelf: "flex-end",
-  },
-  posts: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 16,
-    maxWidth: 620,
-    margin: "0 auto",
-  },
-  card: {
-    background: "rgba(34,39,46,0.98)",
-    borderRadius: 14,
-    border: "1px solid rgba(255,69,0,0.13)",
-    padding: "16px 18px",
-  },
-  date: {
-    color: "#9aa6bc",
-    fontSize: 13,
-    marginBottom: 8,
-  },
-}
 
 export default function Updates({ user, onUpdatesChange }) {
   const [updates, setUpdates] = useState([])
@@ -125,36 +62,40 @@ export default function Updates({ user, onUpdatesChange }) {
   }
 
   return (
-    <div style={styles.container}>
-      <h1 style={styles.title}>📢 Обновления</h1>
+    <div className="updates-page">
+      <header className="updates-header">
+        <h1>Обновления</h1>
+      </header>
 
-      <div style={styles.panel}>
+      <div className="mv-panel updates-compose">
         {canPublish ? (
           <>
             <textarea
-              style={styles.input}
+              className="mv-textarea"
               value={text}
               onChange={(e) => setText(e.target.value)}
-              placeholder="Напиши, что нового в Mollyverse..."
+              placeholder="Что нового в Mollyverse..."
             />
-            <button style={styles.button} onClick={createUpdate}>
-              Опубликовать
-            </button>
+            <div className="mv-form-actions">
+              <button type="button" className="mv-btn mv-btn--primary" onClick={createUpdate}>
+                Опубликовать
+              </button>
+            </div>
           </>
         ) : (
-          <p style={{ margin: 0, color: "#d7d7d7" }}>
+          <p className="mv-hint" style={{ padding: 0, textAlign: "left" }}>
             Публиковать обновления может только владелица аккаунта.
           </p>
         )}
       </div>
 
-      <div style={styles.posts}>
-        {updates.length === 0 && <p>Пока обновлений нет.</p>}
+      <div className="updates-list">
+        {updates.length === 0 && <p className="mv-empty">Пока обновлений нет.</p>}
         {updates.map((item) => (
-          <div key={item.id} style={styles.card}>
-            <div style={styles.date}>{formatKZDate(item.created_at)}</div>
-            <div>{item.content}</div>
-          </div>
+          <article key={item.id} className="mv-panel updates-card">
+            <time className="updates-card-date">{formatKZDate(item.created_at)}</time>
+            <p className="updates-card-text">{item.content}</p>
+          </article>
         ))}
       </div>
     </div>

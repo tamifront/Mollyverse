@@ -39,7 +39,7 @@ export default function Home() {
       </header>
 
       <main className="home-card home-card-wide">
-        <img src={logo} alt="" className="home-logo home-logo-card" aria-hidden />
+
         <h1 className="home-title">
           Добро пожаловать в Mollyverse <span className="home-wave">🐾</span>
         </h1>

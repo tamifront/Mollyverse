@@ -1,0 +1,51 @@
+.updates-page {
+  width: 100%;
+  max-width: var(--mv-max-content);
+  margin: 0 auto;
+}
+
+.updates-header {
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--mv-border-subtle);
+}
+
+.updates-header h1 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--mv-text);
+}
+
+.updates-compose {
+  margin-bottom: 24px;
+}
+
+.updates-compose .mv-textarea {
+  min-height: 88px;
+  margin-bottom: 12px;
+}
+
+.updates-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.updates-card {
+  padding: 18px 20px;
+}
+
+.updates-card-date {
+  font-size: 0.75rem;
+  color: var(--mv-text-muted);
+  margin-bottom: 8px;
+}
+
+.updates-card-text {
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  color: var(--mv-text);
+  white-space: pre-line;
+}
