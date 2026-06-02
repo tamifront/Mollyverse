@@ -11,6 +11,7 @@ import { usePostReactions } from "../hooks/usePostReactions"
 import { formatKZDateAlmaty } from "../utils/datetime"
 import { getLikeCountsForPosts, getFavoriteCountsForPosts } from "../utils/postLikes"
 import { getCommentCountsForPosts } from "../utils/postComments"
+import { uploadPostImage, validatePostImage } from "../utils/postImages"
 import LikeButton from "../components/LikeButton"
 import FavoriteButton from "../components/FavoriteButton"
 import PostComments from "../components/PostComments"
@@ -23,6 +24,9 @@ export default function Posts({ user }) {
   const [loadError, setLoadError] = useState("")
   const [pendingLikes, setPendingLikes] = useState(() => new Set())
   const [commentCounts, setCommentCounts] = useState({})
+  const [imageFile, setImageFile] = useState(null)
+  const [imagePreview, setImagePreview] = useState("")
+  const [creatingPost, setCreatingPost] = useState(false)
 
   const {
     likedPostIds,
@@ -128,12 +132,24 @@ export default function Posts({ user }) {
       alert("Войдите в аккаунт")
       return
     }
-    if (!text.trim()) {
-      alert("Пост не может быть пустым.")
+    if (!text.trim() && !imageFile) {
+      alert("Добавьте текст или фото.")
       return
+    }
+    setCreatingPost(true)
+    let uploadedUrl = ""
+    if (imageFile) {
+      const { url, error: imageError } = await uploadPostImage(user.id, imageFile)
+      if (imageError) {
+        setCreatingPost(false)
+        alert(imageError.message || "Не удалось загрузить фото")
+        return
+      }
+      uploadedUrl = url
     }
     const payload = {
       content: text.trim(),
+      post_image_url: uploadedUrl,
       user_id: user.id,
       post_source: POST_SOURCE_FEED,
       likes: 0,
@@ -143,6 +159,7 @@ export default function Posts({ user }) {
     if (error) {
       const { error: fallbackError } = await supabase.from("posts").insert({
         content: text.trim(),
+        post_image_url: uploadedUrl,
         user_id: user.id,
         likes: 0,
         created_at: new Date().toISOString(),
@@ -151,11 +168,15 @@ export default function Posts({ user }) {
     }
 
     if (error) {
+      setCreatingPost(false)
       alert(error.message)
       return
     }
 
     setText("")
+    setImageFile(null)
+    setImagePreview("")
+    setCreatingPost(false)
     await loadPosts()
   }
 
@@ -174,13 +195,53 @@ export default function Posts({ user }) {
           placeholder="Что у тебя нового?"
           rows={3}
         />
+        {imagePreview ? (
+          <div className="post-compose-image-wrap">
+            <img src={imagePreview} alt="" className="post-compose-image" />
+          </div>
+        ) : null}
+        <div className="post-compose-media">
+          <label className="mv-btn mv-btn--ghost post-compose-media-label">
+            Добавить фото
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              className="post-compose-file-input"
+              disabled={creatingPost}
+              onChange={(e) => {
+                const file = e.target.files?.[0]
+                const err = validatePostImage(file)
+                if (err) {
+                  alert(err)
+                  e.target.value = ""
+                  return
+                }
+                setImageFile(file || null)
+                setImagePreview(file ? URL.createObjectURL(file) : "")
+              }}
+            />
+          </label>
+          {imagePreview ? (
+            <button
+              type="button"
+              className="mv-btn mv-btn--ghost"
+              disabled={creatingPost}
+              onClick={() => {
+                setImageFile(null)
+                setImagePreview("")
+              }}
+            >
+              Убрать фото
+            </button>
+          ) : null}
+        </div>
         <div className="posts-compose-actions">
           <button
             type="submit"
             className="mv-btn mv-btn--primary"
-            disabled={!text.trim()}
+            disabled={creatingPost || (!text.trim() && !imageFile)}
           >
-            Опубликовать
+            {creatingPost ? "Публикуем..." : "Опубликовать"}
           </button>
         </div>
       </form>
@@ -224,6 +285,11 @@ export default function Posts({ user }) {
                   </time>
                 </div>
                 <p className="post-text">{p.content}</p>
+                {p.post_image_url ? (
+                  <div className="post-image-wrap">
+                    <img src={p.post_image_url} alt="" className="post-image" loading="lazy" />
+                  </div>
+                ) : null}
                 <div className="post-actions">
                   <LikeButton
                     variant="feed"

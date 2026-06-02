@@ -7,6 +7,7 @@ import {
   normalizeProfileEntry,
 } from "../utils/profiles"
 import { uploadProfileAvatar, removeProfileAvatar } from "../utils/avatars"
+import { uploadPostImage, validatePostImage } from "../utils/postImages"
 import UserAvatar from "../components/UserAvatar"
 import { usePostReactions } from "../hooks/usePostReactions"
 import { formatKZDateAlmaty } from "../utils/datetime"
@@ -89,6 +90,11 @@ function PostCard({
           {post.edited && <span className="post-edited">(изменён)</span>}
         </div>
         <p className="post-text">{post.content}</p>
+        {post.post_image_url ? (
+          <div className="post-image-wrap">
+            <img src={post.post_image_url} alt="" className="post-image" loading="lazy" />
+          </div>
+        ) : null}
         <div className="post-actions">
           <LikeButton
             variant="profile"
@@ -151,6 +157,9 @@ export default function Profile({ user, profileUserId }) {
   const [favoriteCountsMap, setFavoriteCountsMap] = useState({})
   const [commentCountsMap, setCommentCountsMap] = useState({})
   const [avatarUploading, setAvatarUploading] = useState(false)
+  const [imageFile, setImageFile] = useState(null)
+  const [imagePreview, setImagePreview] = useState("")
+  const [creatingPost, setCreatingPost] = useState(false)
 
   const {
     likedPostIds,
@@ -322,16 +331,47 @@ export default function Profile({ user, profileUserId }) {
 
   // ── создание поста ─────────────────────────────────────────────────────────
   const createPost = async () => {
-    if (!text.trim()) return alert("Пост не может быть пустым")
+    if (!text.trim() && !imageFile) return alert("Добавьте текст или фото")
     if (profileUserId && profileUserId !== user.id) return alert("Нельзя создавать пост не на своём аккаунте!")
-    const payload = { user_id: user.id, content: text.trim(), likes: 0, post_source: POST_SOURCE_PROFILE }
+    setCreatingPost(true)
+    let uploadedUrl = ""
+    if (imageFile) {
+      const { url, error: imageError } = await uploadPostImage(user.id, imageFile)
+      if (imageError) {
+        setCreatingPost(false)
+        alert(imageError.message || "Не удалось загрузить фото")
+        return
+      }
+      uploadedUrl = url
+    }
+    const payload = {
+      user_id: user.id,
+      content: text.trim(),
+      post_image_url: uploadedUrl,
+      likes: 0,
+      post_source: POST_SOURCE_PROFILE,
+    }
     let { error } = await supabase.from("posts").insert(payload)
     if (error) {
-      const { error: fallbackError } = await supabase.from("posts").insert({ user_id: user.id, content: text.trim(), likes: 0 })
+      const { error: fallbackError } = await supabase.from("posts").insert({
+        user_id: user.id,
+        content: text.trim(),
+        post_image_url: uploadedUrl,
+        likes: 0,
+      })
       error = fallbackError
     }
-    if (error) { alert(error.message || "Не удалось создать пост"); return }
-    setText(""); setOpen(false); loadPosts()
+    if (error) {
+      setCreatingPost(false)
+      alert(error.message || "Не удалось создать пост")
+      return
+    }
+    setText("")
+    setImageFile(null)
+    setImagePreview("")
+    setOpen(false)
+    setCreatingPost(false)
+    loadPosts()
   }
 
   // ── удаление поста ─────────────────────────────────────────────────────────
@@ -545,13 +585,53 @@ export default function Profile({ user, profileUserId }) {
                 placeholder="Что у тебя нового?"
                 rows={3}
               />
+              {imagePreview ? (
+                <div className="post-compose-image-wrap">
+                  <img src={imagePreview} alt="" className="post-compose-image" />
+                </div>
+              ) : null}
+              <div className="post-compose-media">
+                <label className="mv-btn mv-btn--ghost post-compose-media-label">
+                  Добавить фото
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/gif"
+                    className="post-compose-file-input"
+                    disabled={creatingPost}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      const err = validatePostImage(file)
+                      if (err) {
+                        alert(err)
+                        e.target.value = ""
+                        return
+                      }
+                      setImageFile(file || null)
+                      setImagePreview(file ? URL.createObjectURL(file) : "")
+                    }}
+                  />
+                </label>
+                {imagePreview ? (
+                  <button
+                    type="button"
+                    className="mv-btn mv-btn--ghost"
+                    disabled={creatingPost}
+                    onClick={() => {
+                      setImageFile(null)
+                      setImagePreview("")
+                    }}
+                  >
+                    Убрать фото
+                  </button>
+                ) : null}
+              </div>
               <button
                 type="button"
                 className="mv-btn mv-btn--primary"
                 onClick={createPost}
-                disabled={!text.trim()}
+                disabled={creatingPost || (!text.trim() && !imageFile)}
               >
-                Опубликовать
+                {creatingPost ? "Публикуем..." : "Опубликовать"}
               </button>
             </div>
           )}

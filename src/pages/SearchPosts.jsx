@@ -345,6 +345,11 @@ export default function SearchPosts({ user }) {
               </div>
               </div>
               <p className="search-result-text">{post.content}</p>
+              {post.post_image_url ? (
+                <div className="post-image-wrap">
+                  <img src={post.post_image_url} alt="" className="post-image" loading="lazy" />
+                </div>
+              ) : null}
               <div className="post-actions search-result-actions">
                 <LikeButton
                   variant="feed"
