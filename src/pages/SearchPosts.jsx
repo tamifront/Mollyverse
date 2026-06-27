@@ -14,9 +14,15 @@ import { getCommentCountsForPosts } from "../utils/postComments"
 import LikeButton from "../components/LikeButton"
 import FavoriteButton from "../components/FavoriteButton"
 import PostComments from "../components/PostComments"
+import {
+  requestFollow,
+  cancelFollowRequest,
+  unfollow,
+  followPublic,
+} from "../utils/follows"
 import "../styles/SearchPosts.css"
 
-export default function SearchPosts({ user }) {
+export default function SearchPosts({ user, onViewProfile }) {
   const [posts, setPosts] = useState([])
   const [profilesById, setProfilesById] = useState({})
   const [query, setQuery] = useState("")
@@ -24,6 +30,8 @@ export default function SearchPosts({ user }) {
   const [users, setUsers] = useState([])
   const [followingIds, setFollowingIds] = useState([])
   const [friendIds, setFriendIds] = useState([])
+  const [pendingFollowIds, setPendingFollowIds] = useState([])
+  const [privateUserIds, setPrivateUserIds] = useState([])
   const [actionLoadingId, setActionLoadingId] = useState("")
   const [pendingLikes, setPendingLikes] = useState(() => new Set())
   const [commentCounts, setCommentCounts] = useState({})
@@ -90,7 +98,7 @@ export default function SearchPosts({ user }) {
 
         const { data: profilesData, error: profilesError } = await supabase
           .from("profiles")
-          .select("id,nickname,bio,avatar_url")
+          .select("id,nickname,bio,avatar_url,is_private")
 
         if (profilesError) {
           console.error("Профили:", profilesError)
@@ -115,10 +123,11 @@ export default function SearchPosts({ user }) {
     async function loadMySocial() {
       if (!user?.id) return
 
-      const [{ data: following, error: followError }, { data: friends, error: friendsError }] =
+      const [{ data: following, error: followError }, { data: friends, error: friendsError }, { data: pending }] =
         await Promise.all([
           supabase.from("follows").select("following_id").eq("follower_id", user.id),
           supabase.from("friends").select("friend_id").eq("user_id", user.id),
+          supabase.from("follow_requests").select("target_id").eq("requester_id", user.id).eq("status", "pending"),
         ])
 
       if (followError && followError.code !== "42P01") {
@@ -130,10 +139,15 @@ export default function SearchPosts({ user }) {
 
       setFollowingIds((following || []).map((i) => i.following_id))
       setFriendIds((friends || []).map((i) => i.friend_id))
+      setPendingFollowIds((pending || []).map((i) => i.target_id))
     }
 
     loadMySocial()
   }, [user?.id])
+
+  useEffect(() => {
+    setPrivateUserIds(users.filter((p) => p.is_private).map((p) => p.id))
+  }, [users])
 
   const filteredPosts = useMemo(() => {
     const normalized = query.trim().toLowerCase()
@@ -161,22 +175,32 @@ export default function SearchPosts({ user }) {
     setActionLoadingId(`follow-${targetUserId}`)
 
     const alreadyFollowing = followingIds.includes(targetUserId)
+    const isPrivate = privateUserIds.includes(targetUserId)
+    const hasPending = pendingFollowIds.includes(targetUserId)
+
     if (alreadyFollowing) {
-      const { error } = await supabase
-        .from("follows")
-        .delete()
-        .eq("follower_id", user.id)
-        .eq("following_id", targetUserId)
+      const { error } = await unfollow(user.id, targetUserId)
       if (error) {
         alert(error.message || "Не удалось отменить подписку")
       } else {
         setFollowingIds((prev) => prev.filter((id) => id !== targetUserId))
       }
+    } else if (hasPending) {
+      const { error } = await cancelFollowRequest(user.id, targetUserId)
+      if (error) {
+        alert(error.message || "Не удалось отменить запрос")
+      } else {
+        setPendingFollowIds((prev) => prev.filter((id) => id !== targetUserId))
+      }
+    } else if (isPrivate) {
+      const { error } = await requestFollow(user.id, targetUserId)
+      if (error) {
+        alert(error.message || "Не удалось отправить запрос")
+      } else {
+        setPendingFollowIds((prev) => [...prev, targetUserId])
+      }
     } else {
-      const { error } = await supabase.from("follows").insert({
-        follower_id: user.id,
-        following_id: targetUserId,
-      })
+      const { error } = await followPublic(user.id, targetUserId)
       if (error) {
         alert(error.message || "Не удалось подписаться")
       } else {
@@ -185,6 +209,13 @@ export default function SearchPosts({ user }) {
     }
 
     setActionLoadingId("")
+  }
+
+  const getFollowLabel = (profileId) => {
+    if (followingIds.includes(profileId)) return "Отписаться"
+    if (pendingFollowIds.includes(profileId)) return "Запрос отправлен"
+    if (privateUserIds.includes(profileId)) return "Запросить подписку"
+    return "Подписаться"
   }
 
   const handleToggleFriend = async (targetUserId) => {
@@ -284,15 +315,24 @@ export default function SearchPosts({ user }) {
           <h2>Пользователи</h2>
           {filteredUsers.map((profile) => (
             <div key={profile.id} className="search-user-row">
-              <UserAvatar
-                nickname={profile.nickname || "без ника"}
-                avatarUrl={profile.avatar_url}
-                size="md"
-              />
-              <div>
-                <div className="search-user-name">{profile.nickname || "без ника"}</div>
-                {profile.bio ? <div className="search-user-bio">{profile.bio}</div> : null}
-              </div>
+              <button
+                type="button"
+                className="search-user-profile-link"
+                onClick={() => onViewProfile?.(profile.id)}
+              >
+                <UserAvatar
+                  nickname={profile.nickname || "без ника"}
+                  avatarUrl={profile.avatar_url}
+                  size="md"
+                />
+                <div>
+                  <div className="search-user-name">
+                    {profile.nickname || "без ника"}
+                    {profile.is_private ? " 🔒" : ""}
+                  </div>
+                  {profile.bio ? <div className="search-user-bio">{profile.bio}</div> : null}
+                </div>
+              </button>
               {profile.id === user?.id ? (
                 <span className="search-hint">Это вы</span>
               ) : (
@@ -303,7 +343,14 @@ export default function SearchPosts({ user }) {
                     onClick={() => handleToggleFollow(profile.id)}
                     disabled={actionLoadingId === `follow-${profile.id}`}
                   >
-                    {followingIds.includes(profile.id) ? "Отписаться" : "Подписаться"}
+                    {getFollowLabel(profile.id)}
+                  </button>
+                  <button
+                    type="button"
+                    className="mv-btn"
+                    onClick={() => onViewProfile?.(profile.id)}
+                  >
+                    Профиль
                   </button>
                   <button
                     type="button"

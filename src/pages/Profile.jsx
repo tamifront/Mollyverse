@@ -16,7 +16,23 @@ import { getCommentCountsForPosts } from "../utils/postComments"
 import LikeButton from "../components/LikeButton"
 import FavoriteButton from "../components/FavoriteButton"
 import PostComments from "../components/PostComments"
+import {
+  checkIsFollowing,
+  getFollowRequestStatus,
+  requestFollow,
+  cancelFollowRequest,
+  unfollow,
+  followPublic,
+  canViewProfileContent,
+  loadPostsByUserReaction,
+} from "../utils/follows"
 import "../styles/Profile.css"
+
+const PROFILE_TABS = [
+  { key: "posts", label: "Посты" },
+  { key: "liked", label: "Лайкнутые" },
+  { key: "favorites", label: "Избранное" },
+]
 
 // New helper to show a popup with users who liked the post
 function LikedUsersPopup({ open, onClose, users }) {
@@ -136,8 +152,9 @@ function PostCard({
 }
 
 // ── главный компонент ────────────────────────────────────────────────────────
-export default function Profile({ user, profileUserId }) {
+export default function Profile({ user, profileUserId, onViewProfile, onBack }) {
   const effectiveProfileUserId = profileUserId || user?.id
+  const isOwnProfile = !profileUserId || profileUserId === user?.id
 
   const [profile, setProfile] = useState(null)
   const [posts, setPosts] = useState([])
@@ -153,6 +170,7 @@ export default function Profile({ user, profileUserId }) {
   const [following, setFollowing] = useState([])
   const [friends, setFriends] = useState([])
   const [activeSocialList, setActiveSocialList] = useState("")
+  const [activeTab, setActiveTab] = useState("posts")
   const [likesMap, setLikesMap] = useState({})
   const [favoriteCountsMap, setFavoriteCountsMap] = useState({})
   const [commentCountsMap, setCommentCountsMap] = useState({})
@@ -160,6 +178,11 @@ export default function Profile({ user, profileUserId }) {
   const [imageFile, setImageFile] = useState(null)
   const [imagePreview, setImagePreview] = useState("")
   const [creatingPost, setCreatingPost] = useState(false)
+  const [isFollowing, setIsFollowing] = useState(false)
+  const [followRequestStatus, setFollowRequestStatus] = useState(null)
+  const [followLoading, setFollowLoading] = useState(false)
+  const [profileUserLikedPosts, setProfileUserLikedPosts] = useState([])
+  const [profileUserFavoritePosts, setProfileUserFavoritePosts] = useState([])
 
   const {
     likedPostIds,
@@ -170,6 +193,52 @@ export default function Profile({ user, profileUserId }) {
     toggleFavorite: handleFavorite,
     refresh: refreshReactions,
   } = usePostReactions(user)
+
+  const isPrivate = Boolean(profile?.is_private)
+  const canViewContent = canViewProfileContent({
+    isOwnProfile,
+    isPrivate,
+    isFollowing,
+  })
+
+  const tabPosts = posts
+  const tabLikedPosts = isOwnProfile ? likedPosts : profileUserLikedPosts
+  const tabFavoritePosts = isOwnProfile ? favoritePosts : profileUserFavoritePosts
+
+  const displayedPosts =
+    activeTab === "posts"
+      ? tabPosts
+      : activeTab === "liked"
+        ? tabLikedPosts
+        : tabFavoritePosts
+
+  const loadFollowState = useCallback(async () => {
+    if (!user?.id || !effectiveProfileUserId || isOwnProfile) {
+      setIsFollowing(false)
+      setFollowRequestStatus(null)
+      return
+    }
+    const [followingNow, requestStatus] = await Promise.all([
+      checkIsFollowing(user.id, effectiveProfileUserId),
+      getFollowRequestStatus(user.id, effectiveProfileUserId),
+    ])
+    setIsFollowing(followingNow)
+    setFollowRequestStatus(requestStatus)
+  }, [user?.id, effectiveProfileUserId, isOwnProfile])
+
+  const loadProfileReactions = useCallback(async () => {
+    if (!effectiveProfileUserId || isOwnProfile) {
+      setProfileUserLikedPosts([])
+      setProfileUserFavoritePosts([])
+      return
+    }
+    const [liked, favorites] = await Promise.all([
+      loadPostsByUserReaction(effectiveProfileUserId, "post_likes"),
+      loadPostsByUserReaction(effectiveProfileUserId, "post_favorites"),
+    ])
+    setProfileUserLikedPosts(liked)
+    setProfileUserFavoritePosts(favorites)
+  }, [effectiveProfileUserId, isOwnProfile])
 
   // ── функция для загрузки пользователей, лайкнувших каждый пост ─────────────
   const loadLikes = useCallback(async (postList) => {
@@ -318,16 +387,37 @@ export default function Profile({ user, profileUserId }) {
   }, [mapUsersById, effectiveProfileUserId])
 
   useEffect(() => {
-    if (!effectiveProfileUserId) { setProfile(null); setPosts([]); setPostAuthors({}); setLikesMap({}); return }
-    loadProfile(); loadPosts(); loadSocial()
-  }, [loadPosts, loadProfile, loadSocial, effectiveProfileUserId])
+    if (!effectiveProfileUserId) {
+      setProfile(null)
+      setPosts([])
+      setPostAuthors({})
+      setLikesMap({})
+      return
+    }
+    setActiveTab("posts")
+    loadProfile()
+    loadPosts()
+    loadSocial()
+    loadFollowState()
+  }, [loadPosts, loadProfile, loadSocial, loadFollowState, effectiveProfileUserId])
 
   useEffect(() => {
-    const merged = [...posts, ...likedPosts, ...favoritePosts]
+    if (!canViewContent) return
+    loadProfileReactions()
+  }, [canViewContent, loadProfileReactions])
+
+  useEffect(() => {
+    const merged = [
+      ...posts,
+      ...likedPosts,
+      ...favoritePosts,
+      ...profileUserLikedPosts,
+      ...profileUserFavoritePosts,
+    ]
     const byId = new Map()
     merged.forEach((p) => { if (p?.id) byId.set(p.id, p) })
     loadLikes([...byId.values()])
-  }, [posts, likedPosts, favoritePosts, loadLikes])
+  }, [posts, likedPosts, favoritePosts, profileUserLikedPosts, profileUserFavoritePosts, loadLikes])
 
   // ── создание поста ─────────────────────────────────────────────────────────
   const createPost = async () => {
@@ -401,11 +491,77 @@ export default function Profile({ user, profileUserId }) {
     await loadLikes([...byId.values()])
   }
 
-  const isOwnProfile = !profileUserId || profileUserId === user?.id
+  const handleFollowAction = async () => {
+    if (!user?.id || isOwnProfile || followLoading) return
+    setFollowLoading(true)
 
-  // ── рендер ────────────────────────────────────────────────────────────────
+    try {
+      if (isFollowing) {
+        const { error } = await unfollow(user.id, effectiveProfileUserId)
+        if (error) alert(error.message || "Не удалось отписаться")
+        else setIsFollowing(false)
+      } else if (followRequestStatus === "pending") {
+        const { error } = await cancelFollowRequest(user.id, effectiveProfileUserId)
+        if (error) alert(error.message || "Не удалось отменить запрос")
+        else setFollowRequestStatus(null)
+      } else if (isPrivate) {
+        const { error } = await requestFollow(user.id, effectiveProfileUserId)
+        if (error) alert(error.message || "Не удалось отправить запрос")
+        else setFollowRequestStatus("pending")
+      } else {
+        const { error } = await followPublic(user.id, effectiveProfileUserId)
+        if (error) alert(error.message || "Не удалось подписаться")
+        else setIsFollowing(true)
+      }
+    } finally {
+      setFollowLoading(false)
+    }
+  }
+
+  const followButtonLabel = isFollowing
+    ? "Отписаться"
+    : followRequestStatus === "pending"
+      ? "Запрос отправлен"
+      : isPrivate
+        ? "Запросить подписку"
+        : "Подписаться"
+
+  function renderSocialUser(item) {
+    const isClickable = item.id !== user?.id && onViewProfile
+    return (
+      <div
+        key={item.id}
+        className={`profile-social-user${isClickable ? " profile-social-user--link" : ""}`}
+        role={isClickable ? "button" : undefined}
+        tabIndex={isClickable ? 0 : undefined}
+        onClick={() => isClickable && onViewProfile(item.id)}
+        onKeyDown={(e) => {
+          if (isClickable && (e.key === "Enter" || e.key === " ")) {
+            e.preventDefault()
+            onViewProfile(item.id)
+          }
+        }}
+      >
+        <UserAvatar nickname={item.nickname} avatarUrl={item.avatar_url} size="sm" />
+        <span>{item.nickname}</span>
+      </div>
+    )
+  }
+
+  const emptyTabMessage =
+    activeTab === "posts"
+      ? "Постов пока нет."
+      : activeTab === "liked"
+        ? "Нет лайкнутых постов."
+        : "Нет избранных постов."
   return (
     <div className="profile-page">
+
+      {onBack && (
+        <button type="button" className="profile-back-btn mv-btn mv-btn--ghost" onClick={onBack}>
+          ← Назад
+        </button>
+      )}
 
       <header className="profile-header">
         <UserAvatar
@@ -416,7 +572,23 @@ export default function Profile({ user, profileUserId }) {
         />
         <h1>{profile?.nickname || "без ника"}</h1>
         {profile?.bio && <p className="profile-bio">{profile.bio}</p>}
+        {isPrivate && !isOwnProfile && (
+          <p className="profile-private-badge">🔒 Приватный аккаунт</p>
+        )}
       </header>
+
+      {!isOwnProfile && (
+        <div className="profile-actions-center">
+          <button
+            type="button"
+            className={`mv-btn${isFollowing ? "" : " mv-btn--primary"}`}
+            onClick={handleFollowAction}
+            disabled={followLoading}
+          >
+            {followLoading ? "..." : followButtonLabel}
+          </button>
+        </div>
+      )}
 
       {isOwnProfile && !editing && (
         <div className="profile-actions-center">
@@ -531,43 +703,28 @@ export default function Profile({ user, profileUserId }) {
         ))}
       </div>
 
-      {activeSocialList === "followers" && (
+      {canViewContent && activeSocialList === "followers" && (
         <div className="mv-panel profile-social-list">
           <h3>Подписчики</h3>
           {followers.length === 0
             ? <p className="mv-hint" style={{ padding: 0, textAlign: "left" }}>Подписчиков пока нет.</p>
-            : followers.map((item) => (
-              <div key={item.id} className="profile-social-user">
-                <UserAvatar nickname={item.nickname} avatarUrl={item.avatar_url} size="sm" />
-                <span>{item.nickname}</span>
-              </div>
-            ))}
+            : followers.map(renderSocialUser)}
         </div>
       )}
-      {activeSocialList === "friends" && (
+      {canViewContent && activeSocialList === "friends" && (
         <div className="mv-panel profile-social-list">
           <h3>Друзья</h3>
           {friends.length === 0
             ? <p className="mv-hint" style={{ padding: 0, textAlign: "left" }}>Друзей пока нет.</p>
-            : friends.map((item) => (
-              <div key={item.id} className="profile-social-user">
-                <UserAvatar nickname={item.nickname} avatarUrl={item.avatar_url} size="sm" />
-                <span>{item.nickname}</span>
-              </div>
-            ))}
+            : friends.map(renderSocialUser)}
         </div>
       )}
-      {activeSocialList === "following" && (
+      {canViewContent && activeSocialList === "following" && (
         <div className="mv-panel profile-social-list">
           <h3>Подписки</h3>
           {following.length === 0
             ? <p className="mv-hint" style={{ padding: 0, textAlign: "left" }}>Подписок пока нет.</p>
-            : following.map((item) => (
-              <div key={item.id} className="profile-social-user">
-                <UserAvatar nickname={item.nickname} avatarUrl={item.avatar_url} size="sm" />
-                <span>{item.nickname}</span>
-              </div>
-            ))}
+            : following.map(renderSocialUser)}
         </div>
       )}
 
@@ -638,92 +795,40 @@ export default function Profile({ user, profileUserId }) {
         </div>
       )}
 
-      <div className="posts-feed">
-        {posts.length === 0 && (
-          <p className="mv-empty">Постов пока нет.</p>
-        )}
-        {posts.map((p) => {
-          const authorProf = getProfileFromMap(profilesById, p.user_id)
-          const authorNick =
-            postAuthors[p.user_id]?.nickname ||
-            authorProf.nickname ||
-            (p.user_id === user?.id ? "Вы" : "без ника")
-          const canDel = p.user_id === user?.id && isOwnProfile
-          return (
-            <PostCard
-              key={p.id}
-              post={p}
-              authorNick={authorNick}
-              authorAvatar={authorProf.avatar_url}
-              user={user}
-              liked={likedPostIds.includes(String(p.id))}
-              favorited={favoritePostIds.includes(String(p.id))}
-              onLike={handleLikeWithReload}
-              onFavorite={handleFavoriteWithReload}
-              onDelete={handleDeletePost}
-              canDelete={canDel}
-              likeUsers={likesMap[p.id] || []}
-              favoriteCount={favoriteCountsMap[p.id] ?? 0}
-              profilesById={profilesById}
-              commentCount={commentCountsMap[p.id] ?? 0}
-              onCommentCountChange={(n) =>
-                setCommentCountsMap((prev) => ({ ...prev, [p.id]: n }))
-              }
-            />
-          )
-        })}
-      </div>
-
-      {/* Лайкнутые посты — только свой профиль */}
-      {isOwnProfile && (
+      {!canViewContent && !isOwnProfile ? (
+        <div className="mv-panel profile-private-wall">
+          <p className="profile-private-message">ой, кажется этот аккаунт приватный:(</p>
+          <p className="mv-hint" style={{ padding: 0, textAlign: "center" }}>
+            Подпишитесь и дождитесь одобрения, чтобы смотреть посты.
+          </p>
+        </div>
+      ) : (
         <>
-          <h2 className="mv-section-title profile-section--liked">Лайкнутые посты</h2>
-          <div className="posts-feed">
-            {likedPosts.length === 0 && (
-              <p className="mv-empty">Нет лайкнутых постов.</p>
-            )}
-            {likedPosts.map((p) => {
-              const authorProf = getProfileFromMap(profilesById, p.user_id)
-              const authorNick = authorProf.nickname
-              return (
-                <PostCard
-                  key={p.id}
-                  post={p}
-                  authorNick={authorNick}
-                  authorAvatar={authorProf.avatar_url}
-                user={user}
-                  liked={true}
-                  favorited={favoritePostIds.includes(String(p.id))}
-                  onLike={handleLikeWithReload}
-                  onFavorite={handleFavoriteWithReload}
-                  onDelete={() => {}}
-                  canDelete={false}
-                  likeUsers={likesMap[p.id] || []}
-                  favoriteCount={favoriteCountsMap[p.id] ?? 0}
-                  profilesById={profilesById}
-                  commentCount={commentCountsMap[p.id] ?? 0}
-                  onCommentCountChange={(n) =>
-                    setCommentCountsMap((prev) => ({ ...prev, [p.id]: n }))
-                  }
-                />
-              )
-            })}
+          <div className="profile-tabs">
+            {PROFILE_TABS.map(({ key, label }) => (
+              <button
+                key={key}
+                type="button"
+                className={`profile-tab${activeTab === key ? " profile-tab--active" : ""}`}
+                onClick={() => setActiveTab(key)}
+              >
+                {label}
+              </button>
+            ))}
           </div>
-        </>
-      )}
 
-      {/* Избранное — только свой профиль */}
-      {isOwnProfile && (
-        <>
-          <h2 className="mv-section-title profile-section--fav">Избранное</h2>
           <div className="posts-feed">
-            {favoritePosts.length === 0 && (
-              <p className="mv-empty">Нет избранных постов.</p>
+            {displayedPosts.length === 0 && (
+              <p className="mv-empty">{emptyTabMessage}</p>
             )}
-            {favoritePosts.map((p) => {
+            {displayedPosts.map((p) => {
               const authorProf = getProfileFromMap(profilesById, p.user_id)
-              const authorNick = authorProf.nickname
-          return (
+              const authorNick =
+                postAuthors[p.user_id]?.nickname ||
+                authorProf.nickname ||
+                (p.user_id === user?.id ? "Вы" : "без ника")
+              const canDel = p.user_id === user?.id && isOwnProfile && activeTab === "posts"
+              return (
                 <PostCard
                   key={p.id}
                   post={p}
@@ -731,11 +836,11 @@ export default function Profile({ user, profileUserId }) {
                   authorAvatar={authorProf.avatar_url}
                   user={user}
                   liked={likedPostIds.includes(String(p.id))}
-                  favorited={true}
+                  favorited={favoritePostIds.includes(String(p.id))}
                   onLike={handleLikeWithReload}
                   onFavorite={handleFavoriteWithReload}
-                  onDelete={() => {}}
-                  canDelete={false}
+                  onDelete={handleDeletePost}
+                  canDelete={canDel}
                   likeUsers={likesMap[p.id] || []}
                   favoriteCount={favoriteCountsMap[p.id] ?? 0}
                   profilesById={profilesById}

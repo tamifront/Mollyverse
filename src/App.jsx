@@ -9,12 +9,24 @@ import Posts from "./pages/Posts"
 import SearchPosts from "./pages/SearchPosts"
 import Updates from "./pages/Updates"
 import EditProfile from "./pages/EditProfile"
+import Settings from "./pages/Settings"
 import Sidebar from "./components/Sidebar"
 
 export default function App() {
   const [user, setUser] = useState(null)
   const [page, setPage] = useState("home")
+  const [viewingProfileId, setViewingProfileId] = useState(null)
   const [updatesUnread, setUpdatesUnread] = useState(false)
+
+  const openProfile = useCallback((userId) => {
+    setViewingProfileId(userId || null)
+    setPage("profile")
+  }, [])
+
+  const openOwnProfile = useCallback(() => {
+    setViewingProfileId(null)
+    setPage("profile")
+  }, [])
 
   const fetchLatestUpdateAt = useCallback(async () => {
     const { data, error } = await supabase
@@ -87,6 +99,7 @@ export default function App() {
       <Sidebar
         user={user}
         setPage={setPage}
+        onOpenOwnProfile={openOwnProfile}
         updatesUnread={updatesUnread}
         onOpenUpdates={markAllUpdatesRead}
       />
@@ -97,8 +110,22 @@ export default function App() {
         {page === "updates" && (
           <Updates user={user} onUpdatesChange={refreshUpdatesUnread} />
         )}
-        {page === "search-posts" && <SearchPosts user={user} />}
-        {page === "profile" && <Profile user={user} />}
+        {page === "search-posts" && (
+          <SearchPosts user={user} onViewProfile={openProfile} />
+        )}
+        {page === "profile" && (
+          <Profile
+            user={user}
+            profileUserId={viewingProfileId}
+            onViewProfile={openProfile}
+            onBack={
+              viewingProfileId
+                ? () => setViewingProfileId(null)
+                : undefined
+            }
+          />
+        )}
+        {page === "settings" && <Settings user={user} />}
         {page === "editprofile" && <EditProfile user={user} />}
       
       </div>

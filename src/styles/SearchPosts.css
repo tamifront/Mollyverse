@@ -52,6 +52,24 @@
   min-width: 0;
 }
 
+.search-user-profile-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+}
+
+.search-user-profile-link:hover .search-user-name {
+  color: var(--mv-accent);
+}
+
 .search-user-row {
   display: flex;
   align-items: center;

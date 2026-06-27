@@ -1,11 +1,12 @@
 import { useState } from "react";
 import "../styles/Sidebar.css";
 import LogoutConfirm from "./LogoutConfirm";
-import { ContactRound, PawPrint, Bomb, Search, CalendarPlus2, LogOut } from "lucide-react";
+import { ContactRound, PawPrint, Bomb, Search, CalendarPlus2, LogOut, Settings as SettingsIcon } from "lucide-react";
 
 export default function Sidebar({
   user,
   setPage,
+  onOpenOwnProfile,
   updatesUnread = false,
   onOpenUpdates,
 }) {
@@ -103,11 +104,19 @@ export default function Sidebar({
 
         <button
           type="button"
-          onClick={() => goToPage("profile")}
+          onClick={() => {
+            onOpenOwnProfile?.()
+            goToPage("profile")
+          }}
           className="flex items-center gap-2"
         >
           <ContactRound size={20} strokeWidth={1.5} />
           <span>Профиль</span>
+        </button>
+
+        <button type="button" onClick={() => goToPage("settings")}>
+          <SettingsIcon size={20} strokeWidth={1.5} />
+          <span>Настройки</span>
         </button>
 
         <button
