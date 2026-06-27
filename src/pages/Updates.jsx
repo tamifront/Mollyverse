@@ -4,7 +4,9 @@ import { formatKZDate } from "../utils/datetime"
 import { markUpdatesAsRead } from "../utils/updatesUnread"
 import "../styles/Updates.css"
 
-const OWNER_USER_ID = (import.meta.env.VITE_OWNER_USER_ID || "").trim()
+const OWNER_EMAIL = (
+  import.meta.env.VITE_OWNER_EMAIL || "tamilaismailova2012@gmail.com"
+).trim().toLowerCase()
 
 export default function Updates({ user, onUpdatesChange }) {
   const [updates, setUpdates] = useState([])
@@ -12,9 +14,8 @@ export default function Updates({ user, onUpdatesChange }) {
 
   const canPublish = useMemo(() => {
     if (!user?.id) return false
-    if (!OWNER_USER_ID) return true
-    return OWNER_USER_ID === user.id
-  }, [user?.id])
+    return user.email?.trim().toLowerCase() === OWNER_EMAIL
+  }, [user?.id, user?.email])
 
   async function loadUpdates() {
     const { data, error } = await supabase

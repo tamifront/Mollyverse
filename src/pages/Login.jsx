@@ -1,44 +1,53 @@
 import "../styles/Login.css"
-import { useState } from "react"
-import { supabase } from "../lib/supabase"
+import { useState, useEffect, useCallback } from "react"
+import {
+  requestSignupCode,
+  confirmSignup,
+  loginWithPassword,
+  mapSignupError,
+  mapLoginError,
+} from "../utils/authRegistration"
 
-function mapAuthError(error, context) {
-  if (!error) return ""
-  const msg = (error.message || "").toLowerCase()
-  if (
-    context === "login" &&
-    (msg.includes("invalid login credentials") ||
-      msg.includes("invalid credentials") ||
-      error.status === 400)
-  ) {
-    return "пароль неверный"
-  }
-  if (msg.includes("user already registered")) {
-    return "Этот email уже зарегистрирован"
-  }
-  if (msg.includes("password") && msg.includes("short")) {
-    return "Пароль слишком короткий (минимум 6 символов)"
-  }
-  if (msg.includes("unable to validate email")) {
-    return "Некорректный email"
-  }
-  return error.message || "Произошла ошибка"
-}
+const RESEND_COOLDOWN_SEC = 60
 
 export default function Login() {
   const [mode, setMode] = useState("login")
+  const [registerStep, setRegisterStep] = useState(1)
+
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
-  const [nickname, setNickname] = useState("")
-  const [age, setAge] = useState("")
+  const [code, setCode] = useState("")
+
   const [error, setError] = useState("")
   const [success, setSuccess] = useState("")
   const [loading, setLoading] = useState(false)
 
-  async function login(e) {
-    e?.preventDefault()
+  const [resendSeconds, setResendSeconds] = useState(0)
+
+  useEffect(() => {
+    if (resendSeconds <= 0) return
+    const timer = setInterval(() => {
+      setResendSeconds((s) => (s <= 1 ? 0 : s - 1))
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [resendSeconds])
+
+  const resetMessages = useCallback(() => {
     setError("")
     setSuccess("")
+  }, [])
+
+  function switchMode(nextMode) {
+    setMode(nextMode)
+    setRegisterStep(1)
+    setCode("")
+    setResendSeconds(0)
+    resetMessages()
+  }
+
+  async function handleLogin(e) {
+    e?.preventDefault()
+    resetMessages()
 
     if (!email.trim() || !password) {
       setError("Введите email и пароль")
@@ -46,26 +55,20 @@ export default function Login() {
     }
 
     setLoading(true)
-    const { error: authError } = await supabase.auth.signInWithPassword({
-      email: email.trim(),
-      password,
-    })
+    const { error: authError } = await loginWithPassword(email, password)
     setLoading(false)
 
     if (authError) {
-      setError(mapAuthError(authError, "login"))
+      setError(mapLoginError(authError))
       return
     }
 
     setSuccess("Добро пожаловать в Mollyverse!")
   }
 
-  async function register(e) {
-    e?.preventDefault()
-    setError("")
-    setSuccess("")
+  async function sendCode(isResend = false) {
+    resetMessages()
 
-    const trimmedNick = nickname.trim()
     if (!email.trim() || !password) {
       setError("Введите email и пароль")
       return
@@ -74,64 +77,71 @@ export default function Login() {
       setError("Пароль должен быть не короче 6 символов")
       return
     }
-    if (trimmedNick.length < 2) {
-      setError("Ник должен быть не короче 2 символов")
+
+    setLoading(true)
+    const { ok, status, data } = await requestSignupCode(email)
+    setLoading(false)
+
+    if (!ok) {
+      setError(mapSignupError(data, status))
       return
     }
-    if (age && (Number(age) < 1 || Number(age) > 120)) {
-      setError("Укажите корректный возраст (1–120)")
+
+    setRegisterStep(2)
+    setCode("")
+    setResendSeconds(data.resend_cooldown_seconds ?? RESEND_COOLDOWN_SEC)
+
+    if (isResend) {
+      setSuccess("Новый код отправлен на почту")
+    }
+  }
+
+  async function handleRegisterStart(e) {
+    e?.preventDefault()
+    await sendCode(false)
+  }
+
+  async function handleResend() {
+    if (resendSeconds > 0 || loading) return
+    await sendCode(true)
+  }
+
+  async function handleConfirmCode(e) {
+    e?.preventDefault()
+    resetMessages()
+
+    if (!/^\d{6}$/.test(code.trim())) {
+      setError("Код неверный. Попробуйте ещё раз")
       return
     }
 
     setLoading(true)
-
-    const { error: signUpError } = await supabase.auth.signUp({
-      email: email.trim(),
-      password,
-    })
-
-    if (signUpError) {
-      setLoading(false)
-      setError(mapAuthError(signUpError, "register"))
-      return
-    }
-
-    const { data: userData, error: loginError } = await supabase.auth.signInWithPassword({
-      email: email.trim(),
-      password,
-    })
-
-    if (loginError) {
-      setLoading(false)
-      setError(
-        "Аккаунт создан. Подтверди email в почте (если требуется) и войди вручную."
-      )
-      setMode("login")
-      return
-    }
-
-    const authUser = userData?.user
-    if (!authUser) {
-      setLoading(false)
-      setError("Не удалось получить данные пользователя")
-      return
-    }
-
-    const { error: profileError } = await supabase.from("profiles").upsert({
-      id: authUser.id,
-      nickname: trimmedNick,
-      age: age ? String(age) : "",
-      avatar_url: "",
-    })
-
+    const { ok, status, data } = await confirmSignup(email, code, password)
     setLoading(false)
 
-    if (profileError) {
-      setError(profileError.message || "Аккаунт создан, но профиль не сохранился")
+    if (!ok) {
+      setError(mapSignupError(data, status))
+      return
+    }
+
+    setLoading(true)
+    const { error: authError } = await loginWithPassword(email, password)
+    setLoading(false)
+
+    if (authError) {
+      setSuccess("Аккаунт создан! Войдите с email и паролем.")
+      setMode("login")
+      setRegisterStep(1)
       return
     }
 
     setSuccess("Аккаунт создан! Добро пожаловать в Mollyverse 🚀")
+  }
+
+  function handleCodeChange(value) {
+    const digits = value.replace(/\D/g, "").slice(0, 6)
+    setCode(digits)
+    setError("")
   }
 
   return (
@@ -143,92 +153,144 @@ export default function Login() {
           <button
             type="button"
             className={mode === "login" ? "login-tab active" : "login-tab"}
-            onClick={() => {
-              setMode("login")
-              setError("")
-              setSuccess("")
-            }}
+            onClick={() => switchMode("login")}
+            disabled={loading}
           >
             Вход
           </button>
           <button
             type="button"
             className={mode === "register" ? "login-tab active" : "login-tab"}
-            onClick={() => {
-              setMode("register")
-              setError("")
-              setSuccess("")
-            }}
+            onClick={() => switchMode("register")}
+            disabled={loading}
           >
             Регистрация
           </button>
         </div>
 
-        <form onSubmit={mode === "login" ? login : register}>
-          <input
-            placeholder="Email"
-            type="email"
-            value={email}
-            onChange={(e) => {
-              setEmail(e.target.value)
-              setError("")
-            }}
-            autoComplete="email"
-            disabled={loading}
-          />
+        {mode === "login" && (
+          <form onSubmit={handleLogin}>
+            <input
+              placeholder="Email"
+              type="email"
+              value={email}
+              onChange={(e) => {
+                setEmail(e.target.value)
+                setError("")
+              }}
+              autoComplete="email"
+              disabled={loading}
+            />
 
-          <input
-            placeholder="Пароль"
-            type="password"
-            value={password}
-            onChange={(e) => {
-              setPassword(e.target.value)
-              setError("")
-            }}
-            autoComplete={mode === "login" ? "current-password" : "new-password"}
-            disabled={loading}
-          />
+            <input
+              placeholder="Пароль"
+              type="password"
+              value={password}
+              onChange={(e) => {
+                setPassword(e.target.value)
+                setError("")
+              }}
+              autoComplete="current-password"
+              disabled={loading}
+            />
 
-          {mode === "register" && (
-            <>
-              <input
-                placeholder="Ник (минимум 2 символа)"
-                value={nickname}
-                onChange={(e) => {
-                  setNickname(e.target.value)
-                  setError("")
+            {error && <p className="login-error">{error}</p>}
+            {success && <p className="login-success">{success}</p>}
+
+            <button type="submit" disabled={loading}>
+              {loading ? "Загрузка..." : "Войти"}
+            </button>
+          </form>
+        )}
+
+        {mode === "register" && registerStep === 1 && (
+          <form onSubmit={handleRegisterStart}>
+            <input
+              placeholder="Email"
+              type="email"
+              value={email}
+              onChange={(e) => {
+                setEmail(e.target.value)
+                setError("")
+              }}
+              autoComplete="email"
+              disabled={loading}
+            />
+
+            <input
+              placeholder="Пароль (минимум 6 символов)"
+              type="password"
+              value={password}
+              onChange={(e) => {
+                setPassword(e.target.value)
+                setError("")
+              }}
+              autoComplete="new-password"
+              disabled={loading}
+            />
+
+            {error && <p className="login-error">{error}</p>}
+            {success && <p className="login-success">{success}</p>}
+
+            <button type="submit" disabled={loading}>
+              {loading ? "Отправка кода..." : "Получить код на почту"}
+            </button>
+          </form>
+        )}
+
+        {mode === "register" && registerStep === 2 && (
+          <form onSubmit={handleConfirmCode}>
+            <p className="login-hint">
+              Код отправлен на <strong>{email}</strong>. Введите 6 цифр из письма.
+              Код действует 15 минут.
+            </p>
+
+            <input
+              className="login-code-input"
+              placeholder="000000"
+              type="text"
+              inputMode="numeric"
+              pattern="\d{6}"
+              maxLength={6}
+              value={code}
+              onChange={(e) => handleCodeChange(e.target.value)}
+              autoComplete="one-time-code"
+              disabled={loading}
+            />
+
+            {error && <p className="login-error">{error}</p>}
+            {success && <p className="login-success">{success}</p>}
+
+            <button type="submit" disabled={loading || code.length !== 6}>
+              {loading ? "Проверка..." : "Подтвердить и создать аккаунт"}
+            </button>
+
+            <div className="login-resend-row">
+              <button
+                type="button"
+                className="login-link-btn"
+                onClick={handleResend}
+                disabled={loading || resendSeconds > 0}
+              >
+                {resendSeconds > 0
+                  ? `Отправить снова (${resendSeconds} с)`
+                  : "Отправить снова"}
+              </button>
+              <button
+                type="button"
+                className="login-link-btn"
+                onClick={() => {
+                  setRegisterStep(1)
+                  setCode("")
+                  resetMessages()
                 }}
-                minLength={2}
-                maxLength={32}
                 disabled={loading}
-              />
-
-              <input
-                placeholder="Возраст (необязательно)"
-                type="number"
-                min={1}
-                max={120}
-                value={age}
-                onChange={(e) => {
-                  setAge(e.target.value)
-                  setError("")
-                }}
-                disabled={loading}
-              />
-            </>
-          )}
-
-          {error && <p className="login-error">{error}</p>}
-          {success && <p className="login-success">{success}</p>}
-
-          <button type="submit" disabled={loading}>
-            {loading
-              ? "Загрузка..."
-              : mode === "login"
-                ? "Войти"
-                : "Создать аккаунт"}
-          </button>
-        </form>
+              >
+                Изменить email
+              </button>
+            </div>
+          </form>
+        )}
       </div>
     </div>
   )
