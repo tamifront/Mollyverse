@@ -1,68 +1,83 @@
-import { supabase, supabaseUrl, supabaseKey } from "../lib/supabase"
+import { supabase } from "../lib/supabase"
 
-const FUNCTIONS_BASE = `${supabaseUrl}/functions/v1`
+function normalizeEmail(email) {
+  return email.trim().toLowerCase()
+}
 
-async function callFunction(name, body) {
-  const res = await fetch(`${FUNCTIONS_BASE}/${name}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${supabaseKey}`,
-      apikey: supabaseKey,
-    },
-    body: JSON.stringify(body),
-  })
+function mapAuthError(error) {
+  if (!error) return { message: "Произошла ошибка" }
+  const msg = (error.message || "").toLowerCase()
 
-  let data = {}
-  try {
-    data = await res.json()
-  } catch {
-    data = {}
+  if (msg.includes("already registered") || msg.includes("already exists")) {
+    return { error: "EMAIL_EXISTS", message: "Пользователь с такой почтой уже существует" }
   }
-
-  return { ok: res.ok, status: res.status, data }
+  if (msg.includes("invalid") || msg.includes("credentials")) {
+    return { error: "INVALID_CREDENTIALS", message: "Неверный email или пароль" }
+  }
+  if (msg.includes("password") && msg.includes("short")) {
+    return { error: "WEAK_PASSWORD", message: "Пароль слишком короткий (минимум 6 символов)" }
+  }
+  if (msg.includes("signup") && msg.includes("disabled")) {
+    return { error: "SIGNUP_DISABLED", message: "Регистрация отключена в настройках Supabase" }
+  }
+  return { message: error.message || "Произошла ошибка" }
 }
 
-export async function requestSignupCode(email) {
-  return callFunction("request-signup-code", { email: email.trim().toLowerCase() })
-}
+export async function registerUser(email, password) {
+  try {
+    const normalized = normalizeEmail(email)
 
-export async function confirmSignup(email, code, password) {
-  return callFunction("confirm-signup", {
-    email: email.trim().toLowerCase(),
-    code: code.trim(),
-    password,
-  })
+    if (password.length < 6) {
+      return {
+        ok: false,
+        status: 400,
+        data: { error: "WEAK_PASSWORD", message: "Пароль слишком короткий (минимум 6 символов)" }
+      }
+    }
+
+    const { data, error } = await supabase.auth.signUp({
+      email: normalized,
+      password: password,
+    })
+
+    if (error) {
+      const mapped = mapAuthError(error)
+      return { ok: false, status: 400, data: mapped }
+    }
+
+    return {
+      ok: true,
+      data: { user_id: data.user?.id, email: data.user?.email }
+    }
+  } catch (err) {
+    console.error("❌ Ошибка регистрации:", err)
+    return {
+      ok: false,
+      status: 500,
+      data: { error: "SERVER_ERROR", message: "Ошибка сервера. Попробуйте позже" }
+    }
+  }
 }
 
 export async function loginWithPassword(email, password) {
-  return supabase.auth.signInWithPassword({
-    email: email.trim(),
-    password,
-  })
+  try {
+    return await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password
+    })
+  } catch (err) {
+    console.error("❌ Ошибка входа:", err)
+    return { error: err }
+  }
 }
 
 export function mapSignupError(data, status) {
   if (data?.message) return data.message
-
   switch (data?.error) {
-    case "EMAIL_EXISTS":
-      return "Пользователь с такой почтой уже существует"
-    case "INVALID_CODE":
-      return "Код неверный. Попробуйте ещё раз"
-    case "EXPIRED":
-    case "NO_CODE":
-      return "Код истёк. Запросите новый"
-    case "LOCKED":
-      return "Слишком много попыток. Попробуйте через 5 минут"
-    case "INVALID_EMAIL":
-      return "Некорректный email"
-    case "WEAK_PASSWORD":
-      return "Пароль слишком короткий (минимум 6 символов)"
-    case "EMAIL_SEND_FAILED":
-      return "Не удалось отправить письмо. Попробуйте позже"
-    case "EMAIL_NOT_CONFIGURED":
-      return "Отправка писем не настроена на сервере"
+    case "EMAIL_EXISTS": return "Пользователь с такой почтой уже существует"
+    case "INVALID_CREDENTIALS": return "Неверный email или пароль"
+    case "WEAK_PASSWORD": return "Пароль слишком короткий (минимум 6 символов)"
+    case "SIGNUP_DISABLED": return "Регистрация отключена в настройках Supabase"
     default:
       if (status >= 500) return "Ошибка сервера. Попробуйте позже"
       return "Произошла ошибка"
@@ -72,12 +87,8 @@ export function mapSignupError(data, status) {
 export function mapLoginError(error) {
   if (!error) return ""
   const msg = (error.message || "").toLowerCase()
-  if (
-    msg.includes("invalid login credentials") ||
-    msg.includes("invalid credentials") ||
-    error.status === 400
-  ) {
-    return "пароль неверный"
+  if (msg.includes("invalid login credentials") || msg.includes("invalid credentials") || error.status === 400) {
+    return "Пароль неверный"
   }
   if (msg.includes("unable to validate email")) {
     return "Некорректный email"

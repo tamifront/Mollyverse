@@ -69,7 +69,7 @@ export default function Settings({ user }) {
 
   async function handleApprove(req) {
     setActionId(req.id)
-    const { error } = await approveFollowRequest(req.id, req.requester_id, user.id)
+    const { error } = await approveFollowRequest(req.id)
     setActionId("")
     if (error) {
       alert(error.message || "Не удалось одобрить запрос")

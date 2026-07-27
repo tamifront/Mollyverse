@@ -1,75 +1,39 @@
-# Mollyverse — регистрация с email-кодом
+# Регистрация — простая настройка (без Brevo и Resend)
 
-Стек: **React + Vite**, **Supabase** (Auth, Postgres, Edge Functions), **Resend** (отправка писем).
+Письма с кодом отправляет **сам Supabase**. Никаких сторонних сервисов.
 
-## 1. SQL-миграция
+## Шаг 1 — один раз в Supabase Dashboard
 
-В Supabase Dashboard → **SQL Editor** выполните файл:
+1. Открой [supabase.com/dashboard](https://supabase.com/dashboard) → проект Mollyverse
+2. **Authentication** → **Sign In / Providers** → **Email**
+3. Включи **Enable Email provider**
+4. Включи **Confirm email** (если выключено)
+5. Сохрани
 
-`supabase/signup_verification.sql`
+## Шаг 2 — SQL (один раз)
 
-Также включите расширение **pg_cron** (Database → Extensions), если cron ещё не активен.
+**SQL Editor** → выполни файл `supabase/is_email_available.sql`
 
-## 2. Resend
+(Если уже делала `signup_verification.sql` — всё равно выполни этот, он короткий.)
 
-1. Создайте аккаунт на [resend.com](https://resend.com)
-2. Добавьте и подтвердите домен (или используйте `onboarding@resend.dev` для тестов)
-3. Скопируйте API-ключ
-
-## 3. Деплой Edge Functions
-
-Установите [Supabase CLI](https://supabase.com/docs/guides/cli) и [Deno](https://deno.land/) (или используйте `npx deno`).
-
-### IDE (если `supabase.ts` / `index.ts` подсвечиваются красным)
-
-1. Установите расширение **Deno** (`denoland.vscode-deno`) — Cursor предложит его из `.vscode/extensions.json`
-2. Перезагрузите окно: `Ctrl+Shift+P` → **Developer: Reload Window**
-3. В проекте уже есть `supabase/functions/deno.json` и `.vscode/settings.json`
-
-Проверка синтаксиса локально:
+## Шаг 3 — готово
 
 ```bash
-npx deno check --config supabase/functions/deno.json supabase/functions/confirm-signup/index.ts
-```
-
-### Деплой на Supabase
-
-```bash
-supabase login
-supabase link --project-ref khlzwhcmsicxnlvwdmer
-
-supabase secrets set RESEND_API_KEY=re_xxxxxxxx
-supabase secrets set RESEND_FROM_EMAIL="Mollyverse <noreply@yourdomain.com>"
-
-supabase functions deploy request-signup-code --no-verify-jwt
-supabase functions deploy confirm-signup --no-verify-jwt
-```
-
-`--no-verify-jwt` нужен, чтобы неавторизованные пользователи могли регистрироваться.
-
-## 4. Запуск фронтенда
-
-```bash
-npm install
 npm run dev
 ```
 
-## Поведение
+Регистрация работает на **любой email**. Код приходит от Supabase (`noreply@mail.app.supabase.io`).
 
-| Сценарий | Поведение |
-|----------|-----------|
-| Регистрация | email + пароль → код на почту → подтверждение → авто-вход |
-| Вход | email + пароль (без кода) |
-| Повторная отправка | через 60 с, старый код аннулируется |
-| Срок кода | 15 минут |
-| Брутфорс | 5 попыток → блокировка 5 минут |
-| Очистка БД | cron каждый час |
-| Старые пользователи | вход без изменений |
+Проверь папку **Спам**, если письма нет.
 
-## Файлы
+---
 
-- `supabase/signup_verification.sql` — таблица, RLS, cron
-- `supabase/functions/request-signup-code/` — отправка кода
-- `supabase/functions/confirm-signup/` — проверка кода и создание аккаунта
-- `src/utils/authRegistration.js` — вызовы API с фронта
-- `src/pages/Login.jsx` — UI входа и регистрации
+## Вход для старых пользователей
+
+Без изменений: **Вход** → email + пароль.
+
+---
+
+## Лимиты
+
+На бесплатном тарифе Supabase ~3–4 письма в час на один адрес. Для большого трафика позже можно подключить свой SMTP в **Project Settings → Auth → SMTP**.

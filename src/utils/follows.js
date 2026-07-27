@@ -23,14 +23,19 @@ export async function getFollowRequestStatus(viewerId, targetId) {
 }
 
 export async function requestFollow(viewerId, targetId) {
-  const { error } = await supabase.from("follow_requests").upsert(
-    {
-      requester_id: viewerId,
-      target_id: targetId,
-      status: "pending",
-    },
-    { onConflict: "requester_id,target_id" }
-  )
+  // Удаляем старый запрос (rejected/approved), затем создаём новый —
+  // upsert ломается из‑за RLS на UPDATE для requester
+  await supabase
+    .from("follow_requests")
+    .delete()
+    .eq("requester_id", viewerId)
+    .eq("target_id", targetId)
+
+  const { error } = await supabase.from("follow_requests").insert({
+    requester_id: viewerId,
+    target_id: targetId,
+    status: "pending",
+  })
   return { error }
 }
 
@@ -60,18 +65,10 @@ export async function followPublic(viewerId, targetId) {
   return { error }
 }
 
-export async function approveFollowRequest(requestId, requesterId, targetId) {
-  const { error: followError } = await supabase.from("follows").insert({
-    follower_id: requesterId,
-    following_id: targetId,
+export async function approveFollowRequest(requestId) {
+  const { error } = await supabase.rpc("approve_follow_request", {
+    p_request_id: requestId,
   })
-  if (followError && followError.code !== "23505") {
-    return { error: followError }
-  }
-  const { error } = await supabase
-    .from("follow_requests")
-    .update({ status: "approved" })
-    .eq("id", requestId)
   return { error }
 }
 

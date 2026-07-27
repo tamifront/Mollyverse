@@ -94,6 +94,37 @@ Deno.serve(async (req) => {
       if (msg === "EMAIL_NOT_CONFIGURED") {
         return jsonResponse({ error: "EMAIL_NOT_CONFIGURED" }, 503)
       }
+      if (msg === "RESEND_TEST_EMAIL_ONLY") {
+        return jsonResponse({
+          error: "RESEND_TEST_EMAIL_ONLY",
+          message:
+            "На тестовом Resend письма уходят только на почту аккаунта Resend (tamilaismailova2012@gmail.com)",
+        }, 502)
+      }
+      if (msg === "RESEND_INVALID_KEY") {
+        return jsonResponse({
+          error: "RESEND_INVALID_KEY",
+          message: "Неверный API-ключ Resend. Создайте новый ключ и обновите secrets",
+        }, 502)
+      }
+      if (msg === "RESEND_FROM_INVALID") {
+        return jsonResponse({
+          error: "RESEND_FROM_INVALID",
+          message: "Неверный адрес отправителя. Используйте onboarding@resend.dev",
+        }, 502)
+      }
+      if (msg === "EMAIL_INVALID_KEY") {
+        return jsonResponse({
+          error: "EMAIL_INVALID_KEY",
+          message: "Неверный API-ключ Brevo. Создайте новый ключ в панели Brevo",
+        }, 502)
+      }
+      if (msg === "EMAIL_SENDER_NOT_VERIFIED") {
+        return jsonResponse({
+          error: "EMAIL_SENDER_NOT_VERIFIED",
+          message: "Подтвердите email отправителя в Brevo (Senders → Verify)",
+        }, 502)
+      }
       await supabase.from("signup_verifications").delete().eq("email", email)
       return jsonResponse({ error: "EMAIL_SEND_FAILED" }, 502)
     }

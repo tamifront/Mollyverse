@@ -325,7 +325,7 @@ export default function SearchPosts({ user, onViewProfile }) {
                   avatarUrl={profile.avatar_url}
                   size="md"
                 />
-                <div>
+                <div className="search-user-info">
                   <div className="search-user-name">
                     {profile.nickname || "без ника"}
                     {profile.is_private ? " 🔒" : ""}
@@ -334,12 +334,12 @@ export default function SearchPosts({ user, onViewProfile }) {
                 </div>
               </button>
               {profile.id === user?.id ? (
-                <span className="search-hint">Это вы</span>
+                <span className="search-hint search-user-self">Это вы</span>
               ) : (
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <div className="search-user-actions">
                   <button
                     type="button"
-                    className={`mv-btn${followingIds.includes(profile.id) ? "" : " mv-btn--primary"}`}
+                    className={`mv-btn search-user-btn${followingIds.includes(profile.id) ? "" : " mv-btn--primary"}`}
                     onClick={() => handleToggleFollow(profile.id)}
                     disabled={actionLoadingId === `follow-${profile.id}`}
                   >
@@ -347,14 +347,14 @@ export default function SearchPosts({ user, onViewProfile }) {
                   </button>
                   <button
                     type="button"
-                    className="mv-btn"
+                    className="mv-btn search-user-btn"
                     onClick={() => onViewProfile?.(profile.id)}
                   >
                     Профиль
                   </button>
                   <button
                     type="button"
-                    className="mv-btn"
+                    className="mv-btn search-user-btn"
                     onClick={() => handleToggleFriend(profile.id)}
                     disabled={actionLoadingId === `friend-${profile.id}`}
                   >
